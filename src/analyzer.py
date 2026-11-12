@@ -9,6 +9,9 @@ class MarketAnalyzer:
     def __init__(self):
         self.db = DatabaseManager()
         self.regions = load_regions_config()
+        # 어느 페이지로 먼저 들어오든 GitHub Actions 수집 결과(data/mart/)를 먼저 반영한다
+        from src.mart_sync import ensure_synced
+        ensure_synced()
 
     def get_available_regions(self) -> dict:
         return self.regions
