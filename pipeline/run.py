@@ -8,7 +8,7 @@ import os
 import sys
 import traceback
 
-from pipeline import licenses, population, sgis, stores
+from pipeline import busstops, ggfloat, licenses, population, schools, sgis, stores
 from pipeline.common import SourceError, get_secret, load_regions, load_status, now_kst, save_status
 
 
@@ -20,6 +20,7 @@ def main() -> int:
 
     data_key = get_secret("DATA_GO_KR_API_KEY")
     sgis_key, sgis_secret = get_secret("SGIS_CONSUMER_KEY"), get_secret("SGIS_CONSUMER_SECRET")
+    gg_key = get_secret("GG_API_KEY")
 
     def need_data_key():
         if not data_key:
@@ -37,6 +38,17 @@ def main() -> int:
     for rk, r in regions.items():
         jobs.append((f"sgis_{rk}", f"SGIS 사업체·가구 {r['name']}", r,
                      lambda rk=rk, r=r, p=None: sgis.collect_region(rk, r, sgis_key, sgis_secret, p, now)))
+    # 학교·버스정류장도 상가정보 스냅샷으로 행정동을 붙이므로 상가정보 다음에 돈다
+    for rk, r in regions.items():
+        jobs.append((f"schools_{rk}", f"학교 위치 {r['name']}", r,
+                     lambda rk=rk, r=r, p=None: schools.collect_region(rk, r, need_data_key(), p, now)))
+    for rk, r in regions.items():
+        jobs.append((f"busstops_{rk}", f"버스정류장 {r['name']}", r,
+                     lambda rk=rk, r=r, p=None: busstops.collect_region(rk, r, need_data_key(), p, now)))
+    for rk, r in regions.items():
+        if rk in ggfloat.SIGUNGU_PREFIX:
+            jobs.append((f"floating_{rk}", f"경기도 유동인구 {r['name']}", r,
+                         lambda rk=rk, r=r, p=None: ggfloat.collect_region(rk, r, gg_key, p, now)))
     for svc in licenses.SERVICES:
         for rk, r in regions.items():
             jobs.append((f"license_{svc}_{rk}", f"인허가 {licenses.SERVICES[svc]} {r['name']}", r,
