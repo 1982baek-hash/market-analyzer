@@ -39,6 +39,7 @@ jobs:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           SGIS_CONSUMER_KEY: ${{ secrets.SGIS_CONSUMER_KEY }}
           SGIS_CONSUMER_SECRET: ${{ secrets.SGIS_CONSUMER_SECRET }}
+          GG_API_KEY: ${{ secrets.GG_API_KEY }}
         run: python -m pipeline.run
 
       - name: 결과 커밋
