@@ -172,9 +172,19 @@ def base_metrics(data: dict, cfg: dict, target_ages=(20, 30, 40)) -> pd.DataFram
         m["schools_mid_high"] = m["schools_elem"] = np.nan
     bus = data.get("busstops")
     if bus is not None and len(bus):
-        bus = bus.copy()
-        bus["dong"] = attach_dong_key(bus, m.reset_index())
-        m["bus_stops"] = bus.groupby("dong").size().reindex(m.index).fillna(0)
+        # 면적이 넓은 읍·면은 정류장이 길 따라 흩어져 있어 개수가 부풀려진다.
+        # 그래서 동네 상권 중심(점포 위치의 중앙값) 반경 500m 안의 정류장만 센다.
+        cent = stores.dropna(subset=["lon", "lat"]).groupby("dong")[["lon", "lat"]].median().reindex(m.index)
+        blon, blat = bus["lon"].to_numpy(float), bus["lat"].to_numpy(float)
+        cnt = []
+        for lon, lat in cent[["lon", "lat"]].to_numpy(float):
+            if np.isnan(lon):
+                cnt.append(0)
+                continue
+            dx = (blon - lon) * 111.0 * np.cos(np.radians(lat))
+            dy = (blat - lat) * 111.0
+            cnt.append(int(((dx * dx + dy * dy) <= 0.25).sum()))
+        m["bus_stops"] = cnt
     else:
         m["bus_stops"] = np.nan
     fl = data.get("floating")
@@ -379,7 +389,7 @@ def _reasons_coffee(r: pd.Series, m: pd.DataFrame) -> list:
     avg_bus = m["bus_stops"].mean()
     if pd.notna(r.get("bus_stops")) and avg_bus:
         add(r["bus_stops"] >= avg_bus, (r["bus_stops"] - avg_bus) / avg_bus * 0.8,
-            f"버스정류장 {int(r['bus_stops'])}곳 (동네 평균 {avg_bus:.0f}곳)")
+            f"상권 중심 500m 안 버스정류장 {int(r['bus_stops'])}곳 (동네 평균 {avg_bus:.0f}곳)")
     avg_acad = m["academies"].mean()
     if avg_acad:
         add(r["academies"] >= avg_acad, (r["academies"] - avg_acad) / avg_acad,
