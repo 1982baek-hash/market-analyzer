@@ -1,0 +1,48 @@
+{
+  "_run": {
+    "failures": 0,
+    "finished_at": "2026-11-12T17:59:11+09:00"
+  },
+  "stores_andong": {
+    "base_period": "202611",
+    "cycle": "분기 갱신 · 매주 확인",
+    "file": "stores/andong_202611.parquet",
+    "fingerprint": "231e5ac692315ed601633f8e347cff599d7fe0d8",
+    "last_checked": "2026-11-12T17:59:11+09:00",
+    "last_updated": "2026-11-12T17:59:11+09:00",
+    "message": "새 스냅샷 저장 (9,436건)",
+    "method": "API 자동 (GitHub Actions)",
+    "name": "소상공인 상가(상권)정보 (경상북도 안동시)",
+    "region": "andong",
+    "rows": 9436,
+    "status": "SUCCESS"
+  },
+  "stores_seongnam": {
+    "base_period": "202611",
+    "cycle": "분기 갱신 · 매주 확인",
+    "file": "stores/seongnam_202611.parquet",
+    "fingerprint": "ef587ffb25347c84f5a219e192288c16ef236666",
+    "last_checked": "2026-11-12T17:59:11+09:00",
+    "last_updated": "2026-11-12T17:59:11+09:00",
+    "message": "새 스냅샷 저장 (45,792건)",
+    "method": "API 자동 (GitHub Actions)",
+    "name": "소상공인 상가(상권)정보 (경기도 성남시)",
+    "region": "seongnam",
+    "rows": 45792,
+    "status": "SUCCESS"
+  },
+  "stores_yecheon": {
+    "base_period": "202611",
+    "cycle": "분기 갱신 · 매주 확인",
+    "file": "stores/yecheon_202611.parquet",
+    "fingerprint": "b66a4ab5907d0a4c7cd93e65a5215e39ba020a75",
+    "last_checked": "2026-11-12T17:59:11+09:00",
+    "last_updated": "2026-11-12T17:59:11+09:00",
+    "message": "새 스냅샷 저장 (2,355건)",
+    "method": "API 자동 (GitHub Actions)",
+    "name": "소상공인 상가(상권)정보 (경상북도 예천군)",
+    "region": "yecheon",
+    "rows": 2355,
+    "status": "SUCCESS"
+  }
+}
