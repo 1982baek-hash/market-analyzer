@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from src import scoring
+from src import navermap, scoring
 from src.config_loader import get_api_key
 
 DEFAULT_REGION = "andong"
@@ -110,6 +110,15 @@ def dong_score_map(data: dict, table: pd.DataFrame, height: int = 420):
     t = table.set_index("adong_cd").join(cent, how="inner")
     if t.empty:
         st.info("지도에 표시할 위치 정보가 없습니다.")
+        return
+    pts = []
+    for _, r in t.iterrows():
+        s = r.get("score")
+        top = pd.notna(r.get("rank")) and r["rank"] <= 3
+        pts.append({"lat": r["lat"], "lon": r["lon"], "color": score_color(s), "size": 18 if pd.notna(s) else 11,
+                    "tooltip": f"{r['adong_nm']} · " + ("판단 보류" if pd.isna(s) else f"{s:.0f}점"),
+                    "label": f"{int(r['rank'])}위 {r['adong_nm']}" if top else ""})
+    if navermap.render(pts, height=height):
         return
     fmap = folium.Map(location=[t["lat"].mean(), t["lon"].mean()], zoom_start=12 if len(t) > 30 else 11,
                       tiles="CartoDB positron")
