@@ -1,12 +1,11 @@
 import json
-import time
-from pathlib import Path
+import folium
+from folium.plugins import MarkerCluster
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_folium import st_folium
 
-from src.config_loader import BASE_DIR, get_api_key
 from src.analyzer import MarketAnalyzer
 from src.collectors.store_collector import StoreCollector
 from src.collectors.pop_collector import PopulationAndBoundaryCollector
@@ -15,223 +14,12 @@ st.set_page_config(page_title="상권 현황 및 지도", page_icon="🗺️", l
 
 analyzer = MarketAnalyzer()
 regions = analyzer.get_available_regions()
-naver_client_id = get_api_key("NAVER_MAP_CLIENT_ID")
-
-
-def get_choropleth_color(val: float, max_val: float) -> str:
-    """단계구분도 색상(노란색 -> 주황색 -> 진한 빨간색 5단계)을 반환합니다."""
-    if max_val <= 0 or val <= 0:
-        return "#FFFFCC"
-    ratio = val / max_val
-    if ratio >= 0.8:
-        return "#BD0026"
-    elif ratio >= 0.6:
-        return "#F03B20"
-    elif ratio >= 0.4:
-        return "#FD8D3C"
-    elif ratio >= 0.2:
-        return "#FECC5C"
-    return "#FFFFB2"
-
-
-def build_map_payload(summary_df: pd.DataFrame, stores_df: pd.DataFrame, selected_metric: str, selected_adong_cd: str):
-    """네이버 지도에 전달할 행정동 폴리곤·점포 마커 JSON 데이터를 생성합니다."""
-    max_val = float(summary_df[selected_metric].max()) if not summary_df.empty and pd.notna(summary_df[selected_metric].max()) else 1.0
-
-    polygons_data = []
-    for _, row in summary_df.iterrows():
-        if pd.notna(row["geojson_str"]) and row["geojson_str"]:
-            geom = json.loads(row["geojson_str"])
-            val = float(row[selected_metric]) if pd.notna(row[selected_metric]) else 0.0
-            fill_color = get_choropleth_color(val, max_val)
-            is_selected = str(row["adong_cd"]) == str(selected_adong_cd)
-
-            rings = []
-            if geom["type"] == "Polygon":
-                rings.append([[pt[1], pt[0]] for pt in geom["coordinates"][0]])
-            elif geom["type"] == "MultiPolygon":
-                for poly in geom["coordinates"]:
-                    rings.append([[pt[1], pt[0]] for pt in poly[0]])
-
-            polygons_data.append({
-                "adong_cd": str(row["adong_cd"]),
-                "sigungu_nm": str(row["sigungu_nm"]),
-                "adong_nm": str(row["adong_nm"]),
-                "store_count": int(row["store_count"]),
-                "franchise_ratio": float(row["franchise_ratio"]),
-                "pop_txt": f"{int(row['population']):,}명" if pd.notna(row["population"]) else "미등록",
-                "p1k_txt": f"{row['stores_per_1k_pop']}개" if pd.notna(row["stores_per_1k_pop"]) else "미제공",
-                "km2_txt": f"{row['stores_per_km2']}개/km²" if pd.notna(row["stores_per_km2"]) else "미제공",
-                "fill_color": fill_color,
-                "stroke_color": "#0044FF" if is_selected else "#333333",
-                "stroke_weight": 3.5 if is_selected else 1.5,
-                "rings": rings,
-            })
-
-    markers_data = []
-    for _, s_row in stores_df.iterrows():
-        full_name = str(s_row["store_name"])
-        if s_row["branch_name"]:
-            full_name += f" ({s_row['branch_name']})"
-        markers_data.append({
-            "name": full_name,
-            "cat": f"{s_row['inds_lcls_nm']} > {s_row['inds_mcls_nm']} > {s_row['inds_scls_nm']}",
-            "dong": f"{s_row['sigungu_nm']} {s_row['adong_nm']}",
-            "addr": str(s_row["rdnm_adr"] or s_row["lno_adr"]),
-            "lat": float(s_row["lat"]),
-            "lon": float(s_row["lon"]),
-            "is_fr": bool(s_row["is_franchise"]),
-        })
-
-    return json.dumps(polygons_data, ensure_ascii=False), json.dumps(markers_data, ensure_ascii=False)
-
-
-def render_naver_map(
-    client_id: str,
-    center_lat: float,
-    center_lon: float,
-    zoom_lv: int,
-    summary_df: pd.DataFrame,
-    stores_df: pd.DataFrame,
-    selected_metric: str,
-    selected_adong_cd: str,
-):
-    """네이버 지도 API v3를 static/naver_map.html로 저장한 뒤 iframe으로 렌더링합니다."""
-    polygons_json, markers_json = build_map_payload(summary_df, stores_df, selected_metric, selected_adong_cd)
-
-    html_code = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Malgun Gothic', sans-serif; }}
-        #map {{ width: 100%; height: 590px; border-radius: 8px; border: 1px solid #ddd; }}
-        .legend-box {{
-            position: absolute; top: 12px; right: 12px; z-index: 100;
-            background: rgba(255,255,255,0.94); padding: 8px 12px;
-            border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-            font-size: 12px; line-height: 1.5;
-        }}
-        .legend-color {{ display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: middle; border: 1px solid #888; }}
-        #hover-box {{
-            position: absolute; bottom: 16px; left: 16px; z-index: 100;
-            background: rgba(255,255,255,0.96); padding: 10px 14px;
-            border-radius: 6px; border: 1px solid #2b2b2b; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-            font-size: 12.5px; line-height: 1.55; display: none; min-width: 230px;
-        }}
-    </style>
-    <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId={client_id}&callback=initMap"></script>
-</head>
-<body>
-    <div id="map"></div>
-    <div id="hover-box"></div>
-    <div class="legend-box">
-        <b>단계구분도 범례</b><br>
-        <span class="legend-color" style="background:#FFFFB2"></span>낮음 (0~20%)<br>
-        <span class="legend-color" style="background:#FECC5C"></span>중하 (20~40%)<br>
-        <span class="legend-color" style="background:#FD8D3C"></span>중간 (40~60%)<br>
-        <span class="legend-color" style="background:#F03B20"></span>중상 (60~80%)<br>
-        <span class="legend-color" style="background:#BD0026"></span>높음 (80~100%)<br>
-        <hr style="margin:4px 0;">
-        🔴 프랜차이즈/지점 &nbsp; 🔵 일반점포
-    </div>
-
-    <script>
-        window.navermap_authFailure = function () {{
-            document.getElementById('map').innerHTML =
-                "<div style='padding:30px; color:#b00020; background:#fff3f3; height:100%;'>" +
-                "<h3>⚠️ 네이버 지도 인증에 실패했습니다.</h3>" +
-                "<p>현재 접속 주소: <code>" + window.location.origin + "</code><br>" +
-                "1. 네이버 클라우드 콘솔 → [Maps] → [Application] → [Web 서비스 URL]에 위 접속 주소가 등록되어 있는지 확인해 주세요.<br>" +
-                "2. [Dynamic Map] 체크 및 Secrets/env의 <code>NAVER_MAP_CLIENT_ID</code>를 확인해 주세요.</p></div>";
-        }};
-
-        function initMap() {{
-            var map = new naver.maps.Map('map', {{
-                center: new naver.maps.LatLng({center_lat}, {center_lon}),
-                zoom: {zoom_lv},
-                zoomControl: true,
-                zoomControlOptions: {{ position: naver.maps.Position.TOP_LEFT }},
-                mapTypeControl: true
-            }});
-
-            var polygonsData = {polygons_json};
-            var markersData = {markers_json};
-            var hoverBox = document.getElementById('hover-box');
-            var infowindow = new naver.maps.InfoWindow({{ borderWidth: 1, backgroundColor: "#fff" }});
-
-            polygonsData.forEach(function(item) {{
-                item.rings.forEach(function(ring) {{
-                    var path = ring.map(function(pt) {{ return new naver.maps.LatLng(pt[0], pt[1]); }});
-                    var polygon = new naver.maps.Polygon({{
-                        map: map,
-                        paths: [path],
-                        fillColor: item.fill_color,
-                        fillOpacity: 0.45,
-                        strokeColor: item.stroke_color,
-                        strokeOpacity: 0.85,
-                        strokeWeight: item.stroke_weight,
-                        clickable: true
-                    }});
-
-                    naver.maps.Event.addListener(polygon, 'mouseover', function() {{
-                        polygon.setOptions({{ fillOpacity: 0.72 }});
-                        hoverBox.style.display = 'block';
-                        hoverBox.innerHTML =
-                            "<b>" + item.sigungu_nm + " " + item.adong_nm + "</b> (" + item.adong_cd + ")<br>" +
-                            "• 점포수: <b>" + item.store_count + "개</b> (프랜차이즈 " + item.franchise_ratio + "%)<br>" +
-                            "• 주민등록인구: " + item.pop_txt + "<br>" +
-                            "• 인구1천명당: " + item.p1k_txt + " / 면적1km²당: " + item.km2_txt;
-                    }});
-
-                    naver.maps.Event.addListener(polygon, 'mouseout', function() {{
-                        polygon.setOptions({{ fillOpacity: 0.45 }});
-                        hoverBox.style.display = 'none';
-                    }});
-                }});
-            }});
-
-            var redSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="#e60000" stroke="#ffffff" stroke-width="1.5"/></svg>';
-            var blueSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="#0055ff" stroke="#ffffff" stroke-width="1.5"/></svg>';
-
-            markersData.forEach(function(st) {{
-                var marker = new naver.maps.Marker({{
-                    map: map,
-                    position: new naver.maps.LatLng(st.lat, st.lon),
-                    title: st.name,
-                    icon: {{
-                        content: st.is_fr ? redSvg : blueSvg,
-                        size: new naver.maps.Size(14, 14),
-                        anchor: new naver.maps.Point(7, 7)
-                    }}
-                }});
-
-                naver.maps.Event.addListener(marker, 'click', function() {{
-                    var iwContent =
-                        "<div style='padding:10px 14px; font-size:12px; min-width:220px; line-height:1.55;'>" +
-                        "<b>" + st.name + "</b><br>" +
-                        "• 업종: " + st.cat + "<br>" +
-                        "• 행정동: " + st.dong + "<br>" +
-                        "• 주소: " + st.addr + "</div>";
-                    infowindow.setContent(iwContent);
-                    infowindow.open(map, marker);
-                }});
-            }});
-        }}
-    </script>
-</body>
-</html>"""
-
-    static_dir = Path(BASE_DIR) / "static"
-    static_dir.mkdir(exist_ok=True)
-    map_file = static_dir / "naver_map.html"
-    map_file.write_text(html_code, encoding="utf-8")
-
-    components.html(html_code, height=600)
-
 
 st.title("🗺️ 지역·업종별 상권 현황 및 지도 시각화")
 
+# ==========================================
+# 1. 사이드바: 지역(시군구 > 행정동) 및 3단계 업종 선택
+# ==========================================
 st.sidebar.header("🔍 분석 조건 선택")
 
 region_options = {k: v["name"] for k, v in regions.items()}
@@ -319,6 +107,9 @@ selected_scls = st.sidebar.selectbox(
 st.sidebar.divider()
 max_markers = st.sidebar.slider("지도 점포 마커 최대 표시 수", min_value=100, max_value=2000, value=600, step=100)
 
+# ==========================================
+# 2. 데이터 조회 및 핵심 지표(KPI) 계산
+# ==========================================
 summary_df = analyzer.get_adong_summary_and_density(
     sigungu_codes=sgg_codes,
     base_ym=latest_ym,
@@ -393,8 +184,11 @@ with k4:
     if top_dong_row is not None:
         st.metric("시군구 내 최다 밀집 행정동", f"{top_dong_row['adong_nm']}", f"{int(top_dong_row['store_count']):,}개 점포")
 
+# ==========================================
+# 3. 지도 시각화 (OpenStreetMap 무료 한글 지도)
+# ==========================================
 st.divider()
-st.subheader("🗺️ 상권 지도: 행정동별 밀집도 단계구분도 & 점포 위치 마커 (네이버 지도)")
+st.subheader("🗺️ 상권 지도: 행정동별 밀집도 단계구분도 & 점포 위치 마커")
 
 metric_choices = {"store_count": "점포 수 (개)"}
 if summary_df["stores_per_1k_pop"].notna().any():
@@ -418,7 +212,95 @@ else:
     c_lon = region_info["center_lon"]
     zoom_lv = region_info["default_zoom"]
 
+m = folium.Map(location=[c_lat, c_lon], zoom_start=zoom_lv, tiles="OpenStreetMap")
+
+features = []
+for _, row in summary_df.iterrows():
+    if pd.notna(row["geojson_str"]) and row["geojson_str"]:
+        geom = json.loads(row["geojson_str"])
+        val = row[selected_map_metric]
+        val_num = float(val) if pd.notna(val) else 0.0
+        pop_txt = f"{int(row['population']):,}명" if pd.notna(row["population"]) else "미등록"
+        p1k_txt = f"{row['stores_per_1k_pop']}개" if pd.notna(row["stores_per_1k_pop"]) else "미제공"
+        km2_txt = f"{row['stores_per_km2']}개/km²" if pd.notna(row["stores_per_km2"]) else "미제공"
+
+        features.append({
+            "type": "Feature",
+            "id": str(row["adong_cd"]),
+            "properties": {
+                "adong_cd": str(row["adong_cd"]),
+                "sigungu_nm": str(row["sigungu_nm"]),
+                "adong_nm": str(row["adong_nm"]),
+                "store_count": int(row["store_count"]),
+                "franchise_ratio": float(row["franchise_ratio"]),
+                "population": pop_txt,
+                "stores_per_1k_pop": p1k_txt,
+                "stores_per_km2": km2_txt,
+                "metric_val": val_num,
+            },
+            "geometry": geom,
+        })
+
+if features:
+    geojson_collection = {"type": "FeatureCollection", "features": features}
+    folium.Choropleth(
+        geo_data=geojson_collection,
+        name="행정동별 밀집도 단계구분도",
+        data=summary_df,
+        columns=["adong_cd", selected_map_metric],
+        key_on="feature.id",
+        fill_color="YlOrRd",
+        fill_opacity=0.45,
+        line_opacity=0.85,
+        legend_name=metric_choices[selected_map_metric],
+        highlight=True,
+    ).add_to(m)
+
+    folium.GeoJson(
+        geojson_collection,
+        name="행정동 상세 정보 툴팁",
+        style_function=lambda x: {
+            "fillColor": "transparent",
+            "color": "#ff0000" if x["properties"]["adong_cd"] == selected_adong_cd else "#333333",
+            "weight": 4 if x["properties"]["adong_cd"] == selected_adong_cd else 1.5,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=["sigungu_nm", "adong_nm", "adong_cd", "store_count", "franchise_ratio", "population", "stores_per_1k_pop", "stores_per_km2"],
+            aliases=["시군구:", "행정동:", "행정동코드:", "선택업종 점포수(개):", "프랜차이즈 추정비율(%):", "주민등록인구:", "인구 1천명당 점포수:", "면적 1km²당 점포수:"],
+            localize=True,
+            sticky=False,
+        ),
+    ).add_to(m)
+
+marker_cluster = MarkerCluster(name="개별 점포 위치 마커").add_to(m)
 display_stores = stores_df.head(max_markers)
+
+for _, s_row in display_stores.iterrows():
+    full_name = s_row["store_name"]
+    if s_row["branch_name"]:
+        full_name += f" ({s_row['branch_name']})"
+    popup_html = (
+        f"<div style='width:230px; font-size:12px;'>"
+        f"<b>{full_name}</b><br>"
+        f"• 분류: {s_row['inds_lcls_nm']} > {s_row['inds_mcls_nm']} > {s_row['inds_scls_nm']}<br>"
+        f"• 행정동: {s_row['sigungu_nm']} {s_row['adong_nm']}<br>"
+        f"• 주소: {s_row['rdnm_adr'] or s_row['lno_adr']}"
+        f"</div>"
+    )
+    color = "red" if s_row["is_franchise"] else "blue"
+    folium.CircleMarker(
+        location=[float(s_row["lat"]), float(s_row["lon"])],
+        radius=5,
+        color=color,
+        fill=True,
+        fill_color=color,
+        fill_opacity=0.85,
+        popup=folium.Popup(popup_html, max_width=260),
+        tooltip=f"{full_name} [{s_row['inds_scls_nm']}]",
+    ).add_to(marker_cluster)
+
+folium.LayerControl().add_to(m)
+
 if len(stores_df) > max_markers:
     st.caption(
         f"ℹ️ 현재 조건의 점포 총 **{len(stores_df):,}개** 중 속도 유지를 위해 상위 **{max_markers:,}개** 마커를 표시 중입니다. "
@@ -427,20 +309,11 @@ if len(stores_df) > max_markers:
 else:
     st.caption(f"ℹ️ 현재 조건의 점포 **{len(stores_df):,}개** 전체가 지도에 표시되었습니다. (🔴 빨간점: 프랜차이즈/지점 / 🔵 파란점: 일반 점포)")
 
-if not naver_client_id or "여기에_" in naver_client_id:
-    st.error("🔑 `Secrets`(또는 `.env`)에 `NAVER_MAP_CLIENT_ID`가 입력되지 않았습니다.")
-else:
-    render_naver_map(
-        client_id=naver_client_id,
-        center_lat=c_lat,
-        center_lon=c_lon,
-        zoom_lv=zoom_lv,
-        summary_df=summary_df,
-        stores_df=display_stores,
-        selected_metric=selected_map_metric,
-        selected_adong_cd=selected_adong_cd,
-    )
+st_folium(m, width=None, height=600, returned_objects=[])
 
+# ==========================================
+# 4. 행정동별 비교 차트 및 상세 데이터 표
+# ==========================================
 st.divider()
 col_chart, col_table = st.columns([1, 1])
 
