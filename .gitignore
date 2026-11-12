@@ -1,0 +1,12 @@
+# 파이썬 실행 캐시 (저장소에 올리지 않음)
+__pycache__/
+*.pyc
+
+# 키·비밀번호
+.env
+.streamlit/secrets.toml
+
+# 원본 다운로드 캐시와 로그 (결과는 data/mart/ 에만 커밋)
+data/raw/stores/
+data/logs/
+*.tmp

@@ -3,7 +3,7 @@ from src.config_loader import get_api_key
 from src.analyzer import MarketAnalyzer
 from src.db_manager import DatabaseManager
 from src.collectors.pop_collector import PopulationAndBoundaryCollector
-from update import run_all_updates
+from src.mart_sync import ensure_synced, status_summary
 
 st.set_page_config(
     page_title="우리 가족 상권 분석기 (성남·안동·예천)",
@@ -38,6 +38,11 @@ if not check_family_password():
     st.stop()
 
 
+# GitHub Actions가 저장소에 커밋한 최신 수집 결과(data/mart/)를 먼저 DuckDB에 반영
+with st.spinner("최신 수집 데이터를 불러오는 중입니다..."):
+    ensure_synced()
+
+
 @st.cache_resource
 def ensure_initial_boundaries():
     collector = PopulationAndBoundaryCollector()
@@ -48,19 +53,20 @@ def ensure_initial_boundaries():
 ensure_initial_boundaries()
 
 db = DatabaseManager()
-need_check, check_msg = db.needs_weekly_check()
 
 st.title("🏪 공공데이터 기반 개인용 상권 분석 웹 앱")
 
-if need_check:
-    st.warning(f"⏰ **주간 업데이트 확인 알림:** {check_msg}")
-    if st.button("🔄 지금 최신 데이터 확인 및 업데이트 실행", type="primary"):
-        with st.spinner("공공데이터포털 및 로컬 폴더에서 최신 데이터를 확인 중입니다..."):
-            res = run_all_updates(force=False)
-        st.success(f"점검 완료! (신규 적재 {len(res['success'])}건 / 최신 유지 {len(res['skipped'])}건 / 실패 {len(res['failed'])}건)")
-        st.rerun()
+run_info = status_summary()
+if not run_info["has_run"]:
+    st.info("ℹ️ 아직 자동 수집 기록이 없습니다. GitHub 저장소의 **Actions → 상권 데이터 자동 수집 → Run workflow**로 첫 수집을 실행해 주세요.")
+elif run_info["failures"]:
+    st.warning(
+        "⚠️ **지난 자동 수집에서 실패한 데이터가 있습니다.** 실패한 항목은 이전 데이터를 그대로 보여 줍니다.\n\n- "
+        + "\n- ".join(run_info["failures"])
+    )
 else:
-    st.caption(f"✅ 자동 업데이트 상태 정상 ({check_msg})")
+    finished = run_info["finished_at"][:16].replace("T", " ")
+    st.caption(f"✅ 자동 수집 정상 · 마지막 확인 {finished} (매주 월요일 새벽 자동 갱신)")
 
 st.markdown(
     """

@@ -1,0 +1,6 @@
+# GitHub Actions 자동 수집용 (앱 실행에는 requirements.txt 사용)
+pandas>=2.1.0
+pyarrow>=14.0.0
+requests>=2.31.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.1
