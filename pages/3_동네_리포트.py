@@ -115,7 +115,7 @@ with fc1:
     bus = data.get("busstops")
     if bus is not None and len(bus):
         n_bus = int((scoring.attach_dong_key(bus, scoring.dong_master(data)) == dong_cd).sum())
-        st.metric("버스정류장", f"{n_bus}곳", help="동네 단위 유동인구는 무료로 공개되지 않아, 지나다니는 사람의 대리 지표로 씁니다.")
+        st.metric("동네 안 버스정류장", f"{n_bus}곳", help="동네 단위 유동인구는 무료로 공개되지 않아, 지나다니는 사람의 대리 지표로 씁니다.")
     else:
         st.metric("버스정류장", scoring.NOT_PROVIDED)
     st.caption("시간대별 유동인구는 [소상공인365](https://bigdata.sbiz.or.kr) › 빅데이터 상권분석에서 이 동네를 골라 확인할 수 있습니다 (무료 가입).")
