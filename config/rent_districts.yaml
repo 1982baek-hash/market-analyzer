@@ -1,0 +1,36 @@
+# 한국부동산원 상업용부동산 임대동향조사 — 상권별 월 임대료 (천원/㎡, 1층 기준 아님: 해당 상권 평균)
+# 출처: R-ONE 상업용부동산 임대동향 통계지도 (https://www.reb.or.kr/r-one/portal/gis/rcsGisViewerPage.do)
+# 분기마다 새로 공표되면 아래 숫자와 period를 바꿔 주세요. (R-ONE 인증키를 받으면 자동 수집으로 바꿀 수 있음)
+# dongs: 상권 구역이 걸친 행정동 (통계지도의 상권 경계를 보고 매칭)
+period: "2026년 3분기"
+districts:
+  - name: 안동구도심
+    region: andong
+    dongs: [서구동, 중구동]
+    small: 12.5   # 소규모 상가
+    large: 9.6    # 중대형 상가
+  - name: 옥동사거리
+    region: andong
+    dongs: [옥동]
+    small: 11.2
+    large: 13.9
+  - name: 성남구시가지
+    region: seongnam
+    dongs: [신흥3동, 수진1동]
+    small: 27.9
+    large: 29.5
+  - name: 모란
+    region: seongnam
+    dongs: [성남동]
+    small: 45.7
+    large: 41.2
+  - name: 분당역세권
+    region: seongnam
+    dongs: [정자1동]
+    small: null   # 소규모 상가 조사 대상 아님
+    large: 41.0
+  - name: 단대오거리역
+    region: seongnam
+    dongs: [단대동, 금광2동]
+    small: null
+    large: 33.6
