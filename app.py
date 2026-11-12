@@ -1,9 +1,9 @@
 import streamlit as st
-from src.config_loader import get_api_key
 from src.analyzer import MarketAnalyzer
 from src.db_manager import DatabaseManager
 from src.collectors.pop_collector import PopulationAndBoundaryCollector
 from src.mart_sync import ensure_synced, status_summary
+from src.ui import require_login
 
 st.set_page_config(
     page_title="우리 가족 상권 분석기 (성남·안동·예천)",
@@ -12,30 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-def check_family_password() -> bool:
-    """FAMILY_PASSWORD가 설정되어 있을 때만 가족 비밀번호 확인창을 띄웁니다."""
-    expected_pw = get_api_key("FAMILY_PASSWORD")
-    if not expected_pw:
-        return True
-
-    if st.session_state.get("auth_ok", False):
-        return True
-
-    st.title("🔒 우리 가족 상권 분석기")
-    st.info("가족 공유용 페이지입니다. 비밀번호를 입력해 주세요.")
-    pw_input = st.text_input("가족 비밀번호", type="password", placeholder="비밀번호 입력 후 엔터")
-    if pw_input:
-        if pw_input == expected_pw:
-            st.session_state["auth_ok"] = True
-            st.rerun()
-        else:
-            st.error("비밀번호가 일치하지 않습니다.")
-    return False
-
-
-if not check_family_password():
-    st.stop()
+require_login()
 
 
 # GitHub Actions가 저장소에 커밋한 최신 수집 결과(data/mart/)를 먼저 DuckDB에 반영
@@ -54,7 +31,22 @@ ensure_initial_boundaries()
 
 db = DatabaseManager()
 
-st.title("🏪 공공데이터 기반 개인용 상권 분석 웹 앱")
+st.title("🏪 우리 가족 상권 분석기")
+
+st.markdown("##### 무엇을 정하려고 하세요?")
+c1, c2, c3 = st.columns(3)
+with c1:
+    with st.container(border=True):
+        st.page_link("pages/1_입지_찾기.py", label="**입지 찾기**", icon="🎯")
+        st.caption("이 업종, 어느 동네가 좋을까? (기본: 커피 + 간식)")
+with c2:
+    with st.container(border=True):
+        st.page_link("pages/2_업종_고르기.py", label="**업종 고르기**", icon="🧭")
+        st.caption("이 동네에 뭐가 부족할까?")
+with c3:
+    with st.container(border=True):
+        st.page_link("pages/3_동네_리포트.py", label="**동네 리포트**", icon="🏘️")
+        st.caption("이 동네는 어떤 곳일까?")
 
 run_info = status_summary()
 if not run_info["has_run"]:
