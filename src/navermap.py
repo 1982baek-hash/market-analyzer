@@ -10,12 +10,19 @@ NCP 콘솔의 Maps Application에서
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
+import time
+from pathlib import Path
 
 import streamlit.components.v1 as components
 
-from src.config_loader import get_api_key
+from src.config_loader import BASE_DIR, get_api_key
+
+# 네이버 지도는 페이지 주소(도메인)로 인증하므로, components.html(about:srcdoc)로는 인증이 안 된다.
+# 그래서 지도 HTML을 static/maps/에 파일로 쓰고, 앱 도메인의 /app/static/ 주소로 iframe에 띄운다.
+MAP_DIR = Path(BASE_DIR) / "static" / "maps"
 
 
 def client_id() -> str:
@@ -40,7 +47,9 @@ def render(points: list[dict], height: int = 420, zoom: int | None = None) -> bo
     ], ensure_ascii=False)
     bounds = json.dumps([min(lats), min(lons), max(lats), max(lons)])
     zoom_js = "null" if zoom is None else str(int(zoom))
-    page = f"""
+    page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{{margin:0;padding:0}}</style></head><body>
 <div id="map" style="width:100%;height:{height - 8}px;border-radius:8px;"></div>
 <div id="err" style="display:none;padding:12px;font:14px sans-serif;color:#b00020;background:#fff4f4;border-radius:8px;"></div>
 <script>
@@ -49,7 +58,7 @@ window.navermap_authFailure = function () {{
   const e = document.getElementById('err');
   e.style.display = 'block';
   e.innerHTML = '네이버 지도 인증에 실패했습니다. NCP 콘솔 › Maps › Application에서 <b>Dynamic Map</b>이 켜져 있는지, '
-    + '<b>Web 서비스 URL</b>에 이 앱 주소(' + (document.referrer ? new URL(document.referrer).origin : '앱 주소') + ')가 '
+    + '<b>Web 서비스 URL</b>에 이 앱 주소(' + location.origin + ')가 '
     + '경로 없이 등록돼 있는지 확인해 주세요.';
 }};
 function draw() {{
@@ -92,6 +101,25 @@ function draw() {{
   setTimeout(function () {{ wait(n + 1); }}, 100);
 }})(0);
 </script>
+</body></html>
 """
-    components.html(page, height=height)
+    name = hashlib.sha1(page.encode("utf-8")).hexdigest()[:20] + ".html"
+    MAP_DIR.mkdir(parents=True, exist_ok=True)
+    target = MAP_DIR / name
+    if not target.exists():
+        target.write_text(page, encoding="utf-8")
+        _cleanup()
+    # 상대 주소: 로컬(/app/static/…)과 Streamlit Cloud(/~/+/app/static/…) 모두에서 앱 도메인으로 열린다
+    components.iframe(f"app/static/maps/{name}", height=height)
     return True
+
+
+def _cleanup(max_age_hours: int = 24) -> None:
+    """하루 지난 지도 파일은 지웁니다."""
+    cutoff = time.time() - max_age_hours * 3600
+    for f in MAP_DIR.glob("*.html"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
