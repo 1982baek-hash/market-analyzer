@@ -227,7 +227,7 @@ def render_naver_map(
     map_file = static_dir / "naver_map.html"
     map_file.write_text(html_code, encoding="utf-8")
 
-    components.iframe(f"/app/static/naver_map.html?v={int(time.time() * 1000)}", height=600)
+    components.html(html_code, height=600)
 
 
 st.title("🗺️ 지역·업종별 상권 현황 및 지도 시각화")
