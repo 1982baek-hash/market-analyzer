@@ -1,0 +1,31 @@
+# 분석 대상 시군구 설정 파일
+# 주의: 성남시는 3개 일반구(수정구 41131, 중원구 41133, 분당구 41135)로 나뉘어 API/데이터에 수록됨
+regions:
+  seongnam:
+    name: "경기도 성남시"
+    sido_name: "경기도"
+    sigungu_codes:
+      - "41131"  # 성남시 수정구
+      - "41133"  # 성남시 중원구
+      - "41135"  # 성남시 분당구
+    center_lat: 37.4200
+    center_lon: 127.1267
+    default_zoom: 12
+
+  andong:
+    name: "경상북도 안동시"
+    sido_name: "경상북도"
+    sigungu_codes:
+      - "47170"  # 안동시
+    center_lat: 36.5684
+    center_lon: 128.7294
+    default_zoom: 11
+
+  yecheon:
+    name: "경상북도 예천군"
+    sido_name: "경상북도"
+    sigungu_codes:
+      - "47900"  # 예천군
+    center_lat: 36.6577
+    center_lon: 128.4528
+    default_zoom: 11

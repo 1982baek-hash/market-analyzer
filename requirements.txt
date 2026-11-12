@@ -1,0 +1,11 @@
+pandas>=2.1.0
+duckdb>=1.0.0
+streamlit>=1.35.0
+folium>=0.16.0
+streamlit-folium>=0.20.0
+plotly>=5.20.0
+geopandas>=0.14.0
+shapely>=2.0.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.1
+requests>=2.31.0
