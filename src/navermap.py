@@ -83,7 +83,15 @@ function draw() {{
   }});
 }}
 </script>
-<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId={html.escape(cid)}&callback=draw"></script>
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId={html.escape(cid)}"></script>
+<script>
+// 지도 모듈이 다 준비될 때까지 기다렸다가 그립니다 (callback 방식은 iframe 안에서 너무 일찍 불리는 경우가 있음)
+(function wait(n) {{
+  if (window.naver && naver.maps && naver.maps.Map && naver.maps.LatLngBounds) {{ draw(); return; }}
+  if (n > 100) {{ document.getElementById('map').innerHTML = '<p style="font:14px sans-serif;padding:12px">네이버 지도를 불러오지 못했습니다.</p>'; return; }}
+  setTimeout(function () {{ wait(n + 1); }}, 100);
+}})(0);
+</script>
 """
     components.html(page, height=height)
     return True
