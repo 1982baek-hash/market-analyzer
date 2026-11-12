@@ -1,0 +1,48 @@
+# 입지 점수 설정 파일 — 숫자를 바꾸면 화면의 점수가 바로 바뀝니다.
+# 업종 코드는 소상공인 상가정보의 소분류 코드(예: I21201 = 카페)입니다.
+
+# 축별 가중치 (합이 100). 데이터가 없는 축은 빼고 나머지를 비례로 늘립니다.
+axis_weights:
+  demand: 35      # 수요 D
+  competition: 30 # 경쟁 C
+  stability: 25   # 안정성 S
+  cost: 10        # 비용 R (임대료 — 아직 수집 전)
+
+# 판단 보류 기준
+min_competitors: 3       # 동네 안 동종 점포가 이보다 적으면 보류
+min_license_cohort: 10   # 3년 폐업률을 계산할 인허가 이력이 이보다 적으면 보류
+
+# 업종 유형별 수요 구성 (합 100). 데이터가 없는 항목은 빼고 비례로 늘립니다.
+demand_types:
+  생활밀착형: {resident: 50, worker: 10, floating: 15, target_age: 25}
+  오피스형: {resident: 15, worker: 45, floating: 20, target_age: 20}
+  방문·관광형: {resident: 10, worker: 10, floating: 55, target_age: 25}
+
+# 형님 매장 기본 프리셋
+presets:
+  coffee_snack:
+    name: "커피 + 핫도그·간식 테이크아웃"
+    target_ages: [10, 20]          # 10–29세 (주민등록 10세 단위)
+    demand: {target_age: 25, school: 20, worker: 20, floating: 20, resident: 15}
+    groups:
+      cafe:
+        name: "카페"
+        scls: [I21201]
+        weight: 40                 # 경쟁 점수에서 카페가 차지하는 비중
+      snack:
+        name: "간식점"
+        # 빵/도넛, 떡/한과, 토스트/샌드위치/샐러드, 김밥/만두/분식, 아이스크림/빙수, 그 외 기타 간이
+        scls: [I21001, I21002, I21005, I21007, I21008, I21099]
+        weight: 60
+    snack_gap_lq: 0.7              # 간식점 LQ가 이보다 낮으면 경쟁 점수 가점
+    snack_gap_bonus: 10
+    franchise_penalty: 10          # 저가 커피 브랜드 비율이 시 평균보다 높으면 경쟁 점수 감점
+    # 3년 폐업률을 볼 휴게음식점 업태 (편의점·백화점·역 구내 등은 제외)
+    license_service: rest_cafes
+    license_bzstat: [커피숍, 일반조리판매, 기타 휴게음식점, 패스트푸드, 다방, 아이스크림, 떡카페, 전통찻집, 과자점, 푸드트럭]
+
+# 학생이 다니는 학원 (하교·학원 동선 수요의 대리 지표)
+student_academy_scls_names: [입시·교과학원, 외국어학원, 음악학원, 미술학원, 태권도/무술학원, 컴퓨터 학원]
+
+# 저가 커피 브랜드 (상호에 이 단어가 들어가면 저가 커피로 봄)
+lowcost_coffee_brands: [메가엠지씨, 메가커피, 컴포즈, 빽다방, 매머드, 더벤티, 텐퍼센트, 하삼동, 커피에반하다, 감성커피, 셀렉토, 커피온리, 만랩커피, 바나프레소, 우지커피]
