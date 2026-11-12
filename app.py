@@ -85,4 +85,4 @@ for idx, (r_key, r_info) in enumerate(regions.items()):
         else:
             st.warning(f"**{r_info['name']}** (미수집)")
             st.metric("적재된 총 점포 수", "0개")
-            st.caption("왼쪽 [5 데이터 현황 및 관리] 또는 [1 상권 현황 및 지도]에서 수집할 수 있습니다.")
+            st.caption("GitHub Actions의 자동 수집이 끝나면 채워집니다.")
