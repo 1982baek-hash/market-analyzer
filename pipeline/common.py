@@ -43,8 +43,8 @@ class SourceError(RuntimeError):
     """수집 실패. 메시지는 데이터 현황 화면에 그대로 보여 줍니다."""
 
 
-def get_json(url: str, params: dict, tries: int = 3, timeout: int = 30) -> dict:
-    """일시적인 네트워크·서버 오류는 최대 3번까지 다시 시도합니다."""
+def get_json(url: str, params: dict, tries: int = 4, timeout: int = 60) -> dict:
+    """일시적인 네트워크·서버 오류는 최대 4번까지 다시 시도합니다 (공공데이터포털이 가끔 느림)."""
     last_err = None
     for attempt in range(1, tries + 1):
         try:
