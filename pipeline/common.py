@@ -70,6 +70,55 @@ def get_json(url: str, params: dict, tries: int = 3, timeout: int = 30) -> dict:
     raise last_err
 
 
+def find_key(obj, key):
+    """중첩된 JSON에서 key를 처음 만나는 값을 찾습니다 (기관마다 감싸는 구조가 달라서)."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k.strip() == key:
+                return v
+        for v in obj.values():
+            found = find_key(v, key)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for v in obj:
+            found = find_key(v, key)
+            if found is not None:
+                return found
+    return None
+
+
+def extract_items(data) -> list:
+    """공공데이터포털 응답에서 item 목록을 꺼냅니다. 1건이면 dict로 오는 경우도 처리합니다."""
+    items = find_key(data, "item")
+    if items is None:
+        items = find_key(data, "items")
+        if isinstance(items, dict):
+            items = items.get("item", [])
+    if items is None or items == "":
+        return []
+    if isinstance(items, dict):
+        items = [items]
+    return [{k.strip(): v for k, v in it.items()} for it in items if isinstance(it, dict)]
+
+
+OK_CODES = {"0", "00", "000", "INFO-000"}
+NODATA_CODES = {"03", "INFO-200"}
+
+
+def check_result(data, context: str) -> bool:
+    """정상이면 True, 자료 없음이면 False, 오류면 SourceError."""
+    code = find_key(data, "resultCode")
+    code = "" if code is None else str(code).strip()
+    if code in OK_CODES or (code == "" and extract_items(data)):
+        return True
+    if code in NODATA_CODES:
+        return False
+    msg = find_key(data, "resultMsg") or ""
+    keys = list(data.keys())[:5] if isinstance(data, dict) else type(data).__name__
+    raise SourceError(f"{context}: API 오류 코드 '{code}' {msg} (응답 키: {keys})")
+
+
 def load_status() -> dict:
     if STATUS_PATH.exists():
         with open(STATUS_PATH, "r", encoding="utf-8") as f:
