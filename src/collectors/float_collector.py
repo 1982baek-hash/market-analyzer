@@ -22,42 +22,58 @@ class FloatingPopulationCollector:
         self.regions = load_regions_config()
 
     def _read_excel_smart(self, file_path: Path) -> pd.DataFrame:
-        """정부 기관 엑셀 상단의 제목 행·빈 행을 건너뛰고 실제 컬럼 헤더 행을 자동으로 찾습니다."""
-        raw = pd.read_excel(file_path, sheet_name=0, header=None, dtype=str)
-        raw = raw.dropna(how="all").reset_index(drop=True)
-        if raw.empty:
-            raise ValueError("엑셀 첫 번째 시트가 비어 있습니다.")
+        """정부 기관 엑셀의 '일러두기' 시트와 상단 제목 행을 건너뛰고 실제 데이터 시트·헤더를 자동으로 찾습니다."""
+        xl = pd.ExcelFile(file_path, engine="openpyxl")
+        sheet_candidates = []
+        if "집계결과" in xl.sheet_names:
+            sheet_candidates.append("집계결과")
+        for name in xl.sheet_names:
+            if name not in sheet_candidates and "일러두기" not in str(name):
+                sheet_candidates.append(name)
+        for name in xl.sheet_names:
+            if name not in sheet_candidates:
+                sheet_candidates.append(name)
 
         header_keywords = [
-            "시도", "시군구", "읍면동", "행정동", "구분",
-            "방문", "체류", "생활", "인구", "기준", "연월", "성별", "연령"
+            "시도", "시군구", "감소지역", "읍면동", "행정동", "구분",
+            "방문", "체류", "생활", "인구", "기준", "연월", "일자", "성별", "연령"
         ]
-        header_idx = None
-        for idx in range(min(15, len(raw))):
-            row_vals = [str(v).strip() for v in raw.iloc[idx].tolist() if pd.notna(v) and str(v).strip()]
-            if len(row_vals) >= 2 and any(any(kw in cell for kw in header_keywords) for cell in row_vals):
-                header_idx = idx
-                break
 
-        if header_idx is None:
+        for sheet_name in sheet_candidates:
+            raw = xl.parse(sheet_name, header=None, dtype=str)
+            raw = raw.dropna(how="all").reset_index(drop=True)
+            if raw.empty:
+                continue
+
+            header_idx = None
             for idx in range(min(15, len(raw))):
                 row_vals = [str(v).strip() for v in raw.iloc[idx].tolist() if pd.notna(v) and str(v).strip()]
-                if len(row_vals) >= 3:
+                if len(row_vals) >= 4 and any(any(kw in cell for kw in header_keywords) for cell in row_vals):
                     header_idx = idx
                     break
 
-        if header_idx is None:
-            header_idx = 0
+            if header_idx is None:
+                for idx in range(min(15, len(raw))):
+                    row_vals = [str(v).strip() for v in raw.iloc[idx].tolist() if pd.notna(v) and str(v).strip()]
+                    if len(row_vals) >= 4:
+                        header_idx = idx
+                        break
 
-        new_cols = []
-        for i, v in enumerate(raw.iloc[header_idx].tolist()):
-            col_str = re.sub(r"\s+", " ", str(v)).strip() if pd.notna(v) else f"Unnamed_{i}"
-            new_cols.append(col_str if col_str else f"Unnamed_{i}")
+            if header_idx is None:
+                continue
 
-        df = raw.iloc[header_idx + 1 :].copy()
-        df.columns = new_cols
-        df = df.dropna(how="all").reset_index(drop=True)
-        return df
+            new_cols = []
+            for i, v in enumerate(raw.iloc[header_idx].tolist()):
+                col_str = re.sub(r"\s+", " ", str(v)).strip() if pd.notna(v) else f"Unnamed_{i}"
+                new_cols.append(col_str if col_str else f"Unnamed_{i}")
+
+            df = raw.iloc[header_idx + 1 :].copy()
+            df.columns = new_cols
+            df = df.dropna(how="all").reset_index(drop=True)
+            if not df.empty:
+                return df
+
+        raise ValueError("엑셀에서 유효한 데이터 시트를 찾지 못했습니다.")
 
     def _read_table(self, file_path: Path) -> pd.DataFrame:
         suffix = file_path.suffix.lower()
@@ -128,13 +144,16 @@ class FloatingPopulationCollector:
             con.unregister("fh_view")
 
             now = datetime.now()
-            con.execute("""
-                INSERT OR REPLACE INTO data_status VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                "floating_seongnam", "경기데이터드림 행정동 유동인구·유출입", "성남시",
-                f"수동 파일 ({file_path.name})", "월 1회", base_ym, len(save_df),
-                now, now, "SUCCESS", ""
-            ])
+            try:
+                con.execute("""
+                    INSERT OR REPLACE INTO data_status VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    "floating_seongnam", "경기데이터드림 행정동 유동인구·유출입", "성남시",
+                    f"수동 파일 ({file_path.name})", "월 1회", base_ym, len(save_df),
+                    now, now, "SUCCESS", ""
+                ])
+            except Exception:
+                pass
         return len(save_df)
 
     def load_seongnam_od_csv(self, file_path: Path, base_ym: str = None) -> int:
@@ -186,16 +205,17 @@ class FloatingPopulationCollector:
         cols = list(raw_df.columns)
 
         # 시군구 필터링 (전국 파일인 경우 안동시 / 예천군 행만 추출)
-        sgg_col = self._find_col(cols, ["시군구명", "시군구", "지역명", "지자체"])
+        sgg_col = self._find_col(cols, ["시군구명", "시군구", "감소지역", "지역명", "지자체"])
         target_kw = "안동" if region_key == "andong" else ("예천" if region_key == "yecheon" else "")
         df = raw_df.copy()
         if sgg_col and target_kw:
             filtered = df[df[sgg_col].astype(str).str.contains(target_kw, na=False)].copy()
-            if not filtered.empty:
-                df = filtered
+            if filtered.empty:
+                raise ValueError(f"파일의 '{sgg_col}' 컬럼에서 '{target_kw}' 데이터를 찾지 못했습니다.")
+            df = filtered
 
-        val_col = self._find_col(cols, ["방문자수", "방문인구", "방문자비율", "생활인구", "체류인구", "인구수", "합계", "계", "비율", "수치", "값"])
-        cat1_col = self._find_col(cols, ["읍면동명", "읍면동", "행정동명", "행정동", "구분", "방문자구분", "연령대", "시간대", "유입지", "시군구", "지표"])
+        val_col = self._find_col(cols, ["읍면동 방문인구(명)", "방문자수", "방문인구", "인구수합계", "생활인구", "체류인구", "인구수", "방문자비율", "합계", "계", "비율", "수치", "값"])
+        cat1_col = self._find_col(cols, ["읍면동 방문지", "읍면동명", "읍면동", "행정동명", "행정동", "체류일자", "기준일자", "일자", "구분", "방문자구분", "연령대", "시간대", "유입지", "시군구", "지표"])
         cat2_col = self._find_col(cols, ["성별", "세부구분", "유형", "요일"])
         period_col = self._find_col(cols, ["기준연월", "기준년월", "기준분기", "연월", "년월", "기간"])
 
@@ -240,11 +260,14 @@ class FloatingPopulationCollector:
             now = datetime.now()
             source_id = "floating_andong" if region_key == "andong" else "tourism_andong_yecheon"
             source_nm = "통계청 인구감소지역 생활인구" if region_key == "andong" else "한국관광 데이터랩 방문자 통계"
-            con.execute("""
-                INSERT OR REPLACE INTO data_status VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                source_id, source_nm, region_key, f"수동 파일 ({file_path.name})",
-                "분기/월 1회", str(save_df["base_period"].iloc[0]) if not save_df.empty else "-",
-                len(save_df), now, now, "SUCCESS", ""
-            ])
+            try:
+                con.execute("""
+                    INSERT OR REPLACE INTO data_status VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    source_id, source_nm, region_key, f"수동 파일 ({file_path.name})",
+                    "분기/월 1회", str(save_df["base_period"].iloc[0]) if not save_df.empty else "-",
+                    len(save_df), now, now, "SUCCESS", ""
+                ])
+            except Exception:
+                pass
         return len(save_df)
