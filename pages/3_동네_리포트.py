@@ -111,8 +111,16 @@ else:
     import folium
     from streamlit_folium import st_folium
 
+    from src import navermap
+
     pts = comp.dropna(subset=["lat", "lon"])
-    if len(pts):
+    naver_pts = [{"lat": r["lat"], "lon": r["lon"], "size": 12,
+                  "color": "#8c564b" if r["구분"] == "카페" else "#ff7f0e",
+                  "tooltip": f"{r['store_name']} · {r['inds_scls_nm']}" + (" · 저가 커피" if r["저가 커피"] else "")}
+                 for _, r in pts.iterrows()]
+    if len(pts) and navermap.render(naver_pts, height=400):
+        st.caption("갈색 = 카페, 주황 = 간식점 · 점에 마우스를 올리면 상호가 보입니다")
+    elif len(pts):
         fmap = folium.Map(location=[pts["lat"].median(), pts["lon"].median()], zoom_start=15, tiles="CartoDB positron")
         for _, r in pts.iterrows():
             color = "#8c564b" if r["구분"] == "카페" else "#ff7f0e"
