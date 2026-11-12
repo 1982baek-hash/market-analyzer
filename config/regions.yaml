@@ -8,6 +8,7 @@ regions:
       - "41131"  # 성남시 수정구
       - "41133"  # 성남시 중원구
       - "41135"  # 성남시 분당구
+    license_org_codes: ["3780000"]  # 인허가 API 개방자치단체코드 (경기성남시)
     center_lat: 37.4200
     center_lon: 127.1267
     default_zoom: 12
@@ -17,6 +18,7 @@ regions:
     sido_name: "경상북도"
     sigungu_codes:
       - "47170"  # 안동시
+    license_org_codes: ["5070000"]  # 인허가 API 개방자치단체코드 (경북안동시)
     center_lat: 36.5684
     center_lon: 128.7294
     default_zoom: 11
@@ -26,6 +28,7 @@ regions:
     sido_name: "경상북도"
     sigungu_codes:
       - "47900"  # 예천군
+    license_org_codes: ["5230000"]  # 인허가 API 개방자치단체코드 (경북예천군)
     center_lat: 36.6577
     center_lon: 128.4528
     default_zoom: 11
