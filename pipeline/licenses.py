@@ -34,7 +34,8 @@ def _fetch(service: str, api_key: str, conds: dict, max_pages: int = 10_000) -> 
     while page <= max_pages:
         params = {"serviceKey": api_key, "pageNo": str(page), "numOfRows": str(PAGE), "returnType": "json"}
         params.update({f"cond[{k}]": v for k, v in conds.items()})
-        data = get_json(url, params, timeout=60)
+        # 전국 데이터라 서버가 느릴 때가 있어 기다리는 시간과 재시도를 넉넉히 둔다
+        data = get_json(url, params, tries=5, timeout=120)
         if not check_result(data, f"{SERVICES[service]} 인허가"):
             break
         items = extract_items(data)
@@ -48,7 +49,11 @@ def _fetch(service: str, api_key: str, conds: dict, max_pages: int = 10_000) -> 
 
 
 def find_group_codes(service: str, api_key: str, sido: str, city: str) -> list:
-    """주소로 몇 페이지 조회해서 그 지역을 담당하는 개방자치단체코드를 알아냅니다."""
+    """주소로 몇 페이지 조회해서 그 지역을 담당하는 개방자치단체코드를 알아냅니다.
+
+    주소 부분일치(LIKE) 검색은 전국 데이터를 훑어서 시간 초과가 잘 나므로,
+    regions.yaml에 license_org_codes가 없을 때만 쓰는 예비 방법입니다.
+    """
     sample = _fetch(service, api_key, {"ROAD_NM_ADDR::LIKE": f"{sido} {city}"}, max_pages=3)
     counts = Counter(str(r.get("OPN_ATMY_GRP_CD", "")).strip() for r in sample)
     counts.pop("", None)
@@ -130,7 +135,9 @@ def normalize(rows: list, service: str, city: str, now) -> pd.DataFrame:
 
 def collect(service: str, region_key: str, region: dict, api_key: str, prev: dict, now) -> dict:
     sido, city = region["sido_name"], region["name"].split()[-1]
-    codes = prev.get("group_codes") or find_group_codes(service, api_key, sido, city)
+    codes = ([str(c) for c in region.get("license_org_codes") or []]
+             or prev.get("group_codes")
+             or find_group_codes(service, api_key, sido, city))
     out = OUT_DIR / f"{service}_{region_key}.parquet"
     incremental = out.exists() and prev.get("synced_through")
 
