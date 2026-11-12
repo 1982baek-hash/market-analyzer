@@ -33,7 +33,7 @@ else:
 ui.period_badges(info["periods"])
 axes_kr = {"demand": "수요", "competition": "경쟁", "stability": "안정성", "cost": "비용"}
 st.caption("점수 구성 · " + " · ".join(f"{axes_kr[k]} {v}%" for k, v in info["used_axes"].items())
-           + "  |  아직 없는 자료: " + ", ".join(dict.fromkeys(info["missing"])))
+           + "  |  빠진 자료·대체 지표: " + ", ".join(dict.fromkeys(info["missing"])))
 
 ranked = table[table["score"].notna()]
 held = table[table["score"].isna()]
@@ -51,6 +51,8 @@ for i, (_, r) in enumerate(ranked.head(3).iterrows()):
                       help=f"수요 {r['D']:.0f} · 경쟁 {r['C']:.0f}" + ("" if pd.isna(r.get('S')) else f" · 안정성 {r['S']:.0f}"))
             for line in r["reasons"]:
                 st.markdown(f"- {line}")
+            rl = ui.rent_line(r)
+            st.caption(rl if rl else "💰 임대료: 부동산원 조사 상권이 아니라 제공되지 않음")
 
 # ---------------- 지도 + 순위표
 left, right = st.columns([5, 6])
@@ -75,6 +77,7 @@ with right:
         age_label: txt(table["target_share"] * 100, "{:.0f}%"),
         "직장인": txt(table["worker"]),
         "3년 폐업률": txt(table["lic_closure3"] * 100, "{:.0f}%") if "lic_closure3" in table else None,
+        "임대료(천원/㎡)": txt(table["rent_small"].fillna(table["rent_large"]), "{:.1f}") if "rent_small" in table else None,
         "판단 보류": table["hold_reason"],
     }
     show = pd.DataFrame({k: v for k, v in cols_map.items() if v is not None})
@@ -88,10 +91,11 @@ with right:
 with st.expander("점수는 이렇게 계산해요"):
     st.markdown(
         """
-- **수요**: 10–29세 비중, 학생 학원 수(학교 위치 자료가 들어오기 전까지 대신 사용), 직장인 수, 거주 인구를 같은 시·군 동네끼리 백분위로 매겨 섞습니다.
+- **수요**: 10–29세 비중, 학교·학원 근접(중·고등학교 수 60% + 학생 학원 수 40%), 직장인 수, 거주 인구, 유동(버스정류장 수)을 같은 시·군 동네끼리 백분위로 매겨 섞습니다.
+- 동네 단위 유동인구는 무료로 공개되지 않아 **버스정류장 수**로 대신합니다. 최종 후보는 [소상공인365](https://bigdata.sbiz.or.kr)에서 시간대별 유동인구를 꼭 확인해 주세요.
 - **경쟁**: 인구(주민+직장인) 1만 명당 카페·간식점이 적을수록 높습니다. 간식점이 시 평균보다 뚜렷이 적으면(LQ 0.7 미만) +10점, 카페 중 저가 브랜드 비율이 시 평균보다 높으면 −10점.
 - **안정성**: 3~7년 전에 문을 연 카페·간식점(휴게음식점 인허가) 중 3년 안에 폐업한 비율이 낮을수록, 최근 1년 개업이 폐업보다 많을수록 높습니다.
-- 유동인구·임대료는 아직 수집 전이라 빼고, 남은 축의 비중을 비례로 늘렸습니다.
+- **임대료**는 한국부동산원이 조사하는 상권(안동구도심·옥동사거리·성남구시가지·모란·분당역세권·단대오거리역)에 걸친 동네만 표시하고, 점수에는 넣지 않았습니다. 상권 평균이라 실제 매물과 차이가 있으니 현장 시세로 꼭 확인해 주세요.
 - 점수는 **기회가 보이는 곳**을 알려 줄 뿐 매출을 예측하지는 않습니다. 최종 결정 전에는 현장 방문과 임대 시세 확인이 필요합니다.
 - 가중치는 저장소의 `config/business_types.yaml`에서 바꿀 수 있습니다.
 """

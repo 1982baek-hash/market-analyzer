@@ -33,6 +33,8 @@ if row is not None:
     c[5].metric("간식점", f"{int(row['snack_cnt'])}곳")
     if row["reasons"]:
         st.markdown("  \n".join(row["reasons"]))
+    rl = ui.rent_line(row)
+    st.caption(rl if rl else "💰 임대료: 한국부동산원 조사 상권이 아니라 제공되지 않음 · 주변 매물 시세로 확인해 주세요")
 
 st.divider()
 left, right = st.columns(2)
@@ -95,8 +97,39 @@ else:
     st.caption("올해는 지금까지의 건수입니다. 인허가 자료는 2일 전 기준으로 갱신됩니다.")
 
 # ---------------- 유동인구
-st.subheader("유동인구")
-st.info(f"{scoring.NOT_PROVIDED} — 유동·방문인구 자료는 다음 단계에서 붙입니다.")
+st.subheader("유동인구 · 학교")
+fc1, fc2 = st.columns(2)
+with fc1:
+    fl = data.get("floating")
+    if fl is not None and len(fl):
+        latest = fl["base_ym"].max()
+        f_here = fl[(fl["base_ym"] == latest) & (scoring.attach_dong_key(fl, scoring.dong_master(data)) == dong_cd)]
+        f_tz = f_here[f_here["tz"] != "TOT"].sort_values("tz")
+        if len(f_tz):
+            fig = go.Figure(go.Bar(x=f_tz["tz"], y=f_tz["share"], marker_color="#B279A2",
+                                   hovertemplate="%{x} %{y:.1f}%<extra></extra>"))
+            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(title="비율(%)"))
+            st.markdown("**시간대별 유동인구 비율** (경기도 집계)")
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(f"기준 {latest[:4]}.{latest[4:]} · 시간대코드는 경기데이터드림 정의(TZ01부터 이른 시간대 순)")
+    bus = data.get("busstops")
+    if bus is not None and len(bus):
+        n_bus = int((scoring.attach_dong_key(bus, scoring.dong_master(data)) == dong_cd).sum())
+        st.metric("버스정류장", f"{n_bus}곳", help="동네 단위 유동인구는 무료로 공개되지 않아, 지나다니는 사람의 대리 지표로 씁니다.")
+    else:
+        st.metric("버스정류장", scoring.NOT_PROVIDED)
+    st.caption("시간대별 유동인구는 [소상공인365](https://bigdata.sbiz.or.kr) › 빅데이터 상권분석에서 이 동네를 골라 확인할 수 있습니다 (무료 가입).")
+with fc2:
+    sch = data.get("schools")
+    if sch is not None and len(sch):
+        mine_sch = sch[scoring.attach_dong_key(sch, scoring.dong_master(data)) == dong_cd]
+        st.metric("중·고등학교", f"{int(mine_sch['level'].str.contains('중학교|고등학교').sum())}곳")
+        st.caption(f"초등학교 {int(mine_sch['level'].str.contains('초등').sum())}곳 · 학교 위치표준데이터 기준")
+        if len(mine_sch):
+            st.dataframe(mine_sch[["name", "level", "addr"]].rename(columns={"name": "학교", "level": "구분", "addr": "주소"}),
+                         hide_index=True, use_container_width=True, height=180)
+    else:
+        st.metric("중·고등학교", scoring.NOT_PROVIDED)
 
 # ---------------- 커피·간식 경쟁점
 st.subheader("커피·간식 경쟁점")
