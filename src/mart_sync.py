@@ -103,6 +103,15 @@ def sync_mart_to_duckdb() -> dict:
                 con.execute("ROLLBACK")
                 raise
 
+        # 보조 데이터 반영이 실패해도 점포 화면은 계속 쓸 수 있게 한다 (오류는 errors에 남김)
+        errors = []
+        for label, fn in (("인구", lambda: _sync_population(con, regions)), ("인허가", lambda: _sync_licenses(con))):
+            try:
+                loaded += fn()
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{label}: {e}")
+                print(f"[mart_sync] {label} 반영 실패: {e}", flush=True)
+
         for source_id, s in status.items():
             if source_id.startswith("_") or not isinstance(s, dict):
                 continue
@@ -117,7 +126,64 @@ def sync_mart_to_duckdb() -> dict:
                 ],
             )
 
-    return {"loaded": loaded, "skipped": skipped}
+    return {"loaded": loaded, "skipped": skipped, "errors": errors}
+
+
+def _latest_per_region(folder, regions) -> dict:
+    """{지역키: 가장 최근 파일} — 파일 이름이 {지역}_{기간}.parquet 인 폴더용"""
+    latest = {}
+    for p in sorted(folder.glob("*.parquet")) if folder.exists() else []:
+        region_key, _, period = p.stem.rpartition("_")
+        if region_key in regions and period >= latest.get(region_key, ("", None))[0]:
+            latest[region_key] = (period, p)
+    return {k: v[1] for k, v in latest.items()}
+
+
+def _sync_population(con, regions) -> list:
+    """주민등록 인구 → region_demographics. 가구 수는 SGIS 읍면동 이름으로 맞춰 붙인다."""
+    pops = _latest_per_region(MART_DIR / "population", regions)
+    sgis_files = _latest_per_region(MART_DIR / "sgis", regions)
+    done = []
+    for region_key, p in pops.items():
+        base_ym = p.stem.rpartition("_")[2]
+        hh_join, hh_col = "", "NULL"
+        if region_key in sgis_files:
+            hh_join = ("LEFT JOIN (SELECT sigungu_cd, adm_nm, MAX(household_cnt) AS household_cnt "
+                       f"FROM read_parquet({_sql_path(sgis_files[region_key])}) GROUP BY 1, 2) h "
+                       "ON h.sigungu_cd = p.sigungu_cd AND replace(h.adm_nm, ' ', '') = replace(p.adong_nm, ' ', '')")
+            hh_col = "CAST(h.household_cnt AS BIGINT)"
+        con.execute("BEGIN TRANSACTION")
+        try:
+            con.execute(
+                f"""INSERT OR REPLACE INTO region_demographics
+                    (base_ym, sigungu_cd, adong_cd, adong_nm, population, households, area_km2, updated_at)
+                    SELECT p.base_ym, p.sigungu_cd, p.adong_cd, p.adong_nm, CAST(p.population AS BIGINT),
+                           {hh_col}, NULL, now()
+                    FROM read_parquet({_sql_path(p)}) p {hh_join}"""
+            )
+            con.execute("COMMIT")
+            done.append(f"{p.name}")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+    return done
+
+
+def _sync_licenses(con) -> list:
+    """인허가 → licenses_history (관리번호 기준으로 덮어쓰기)"""
+    folder = MART_DIR / "licenses"
+    done = []
+    for p in sorted(folder.glob("*.parquet")) if folder.exists() else []:
+        con.execute(
+            f"""INSERT OR REPLACE INTO licenses_history
+                (mgmt_no, service_nm, biz_name, open_date, close_date, status_nm,
+                 sigungu_cd, adong_cd, adong_nm, addr, lon, lat, updated_at)
+                SELECT mgmt_no, service_nm, biz_name, open_date, close_date, status_nm,
+                       sigungu_cd, adong_cd, adong_nm, addr, lon, lat, updated_at
+                FROM read_parquet({_sql_path(p)})"""
+        )
+        done.append(p.name)
+    return done
 
 
 def ensure_synced() -> None:
