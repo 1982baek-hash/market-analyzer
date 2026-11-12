@@ -19,6 +19,7 @@ MART = ROOT / "data" / "mart"
 TYPES_YAML = ROOT / "config" / "business_types.yaml"
 REGIONS_YAML = ROOT / "config" / "regions.yaml"
 CATEGORY_CSV = ROOT / "config" / "category_mapping.csv"
+RENT_YAML = ROOT / "config" / "rent_districts.yaml"
 
 NOT_PROVIDED = "이 지역은 제공되지 않음"
 
@@ -48,17 +49,45 @@ def mart_signature() -> str:
 
 def load_region_data(region_key: str) -> dict:
     """한 지역의 최신 점포·인구·종사자·인허가 자료를 읽습니다. 없는 자료는 None."""
-    out = {"stores": None, "population": None, "sgis": None, "licenses": {}, "periods": {}}
+    out = {"stores": None, "population": None, "sgis": None, "schools": None, "busstops": None, "floating": None,
+           "licenses": {}, "periods": {}}
     for key, folder in (("stores", "stores"), ("population", "population"), ("sgis", "sgis")):
         p = _latest(folder, region_key)
         if p is not None:
             out[key] = pd.read_parquet(p)
             out["periods"][key] = p.stem.split("_")[-1]
+    for key in ("schools", "busstops", "floating"):
+        p = MART / key / f"{region_key}.parquet"
+        if p.exists():
+            out[key] = pd.read_parquet(p)
     for svc in ("rest_cafes", "general_restaurants"):
         p = MART / "licenses" / f"{svc}_{region_key}.parquet"
         if p.exists():
             out["licenses"][svc] = pd.read_parquet(p)
     return out
+
+
+def rent_table(region_key: str) -> pd.DataFrame:
+    """부동산원 상권 임대료를 동네별로 펼칩니다 (조사 상권이 걸친 동네만)."""
+    try:
+        with open(RENT_YAML, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return pd.DataFrame(columns=["adong_nm", "rent_district", "rent_small", "rent_large", "rent_period"])
+    rows = []
+    for d in cfg.get("districts", []):
+        if d.get("region") != region_key:
+            continue
+        for nm in d.get("dongs", []):
+            rows.append({"adong_nm": nm, "rent_district": d["name"], "rent_small": d.get("small"),
+                         "rent_large": d.get("large"), "rent_period": cfg.get("period", "")})
+    t = pd.DataFrame(rows, columns=["adong_nm", "rent_district", "rent_small", "rent_large", "rent_period"])
+    return t.drop_duplicates("adong_nm")
+
+
+def attach_rent(m: pd.DataFrame, region_key: str) -> pd.DataFrame:
+    rt = rent_table(region_key)
+    return m.merge(rt, on="adong_nm", how="left")
 
 
 # ---------------------------------------------------------------- 공통 계산
@@ -132,8 +161,49 @@ def base_metrics(data: dict, cfg: dict, target_ages=(20, 30, 40)) -> pd.DataFram
     m["stores_total"] = stores.groupby("dong").size().reindex(m.index).fillna(0)
     acad = set(cfg.get("student_academy_scls_names", []))
     m["academies"] = stores[stores["inds_scls_nm"].isin(acad)].groupby("dong").size().reindex(m.index).fillna(0)
+    sch = data.get("schools")
+    if sch is not None and len(sch):
+        sch = sch.copy()
+        sch["dong"] = attach_dong_key(sch, m.reset_index())
+        lvl = sch["level"].astype(str)
+        m["schools_mid_high"] = sch[lvl.str.contains("중학교|고등학교")].groupby("dong").size().reindex(m.index).fillna(0)
+        m["schools_elem"] = sch[lvl.str.contains("초등")].groupby("dong").size().reindex(m.index).fillna(0)
+    else:
+        m["schools_mid_high"] = m["schools_elem"] = np.nan
+    bus = data.get("busstops")
+    if bus is not None and len(bus):
+        bus = bus.copy()
+        bus["dong"] = attach_dong_key(bus, m.reset_index())
+        m["bus_stops"] = bus.groupby("dong").size().reindex(m.index).fillna(0)
+    else:
+        m["bus_stops"] = np.nan
+    fl = data.get("floating")
+    if fl is not None and len(fl):
+        latest = fl["base_ym"].max()
+        tot = fl[(fl["base_ym"] == latest) & (fl["tz"] == "TOT")].copy()
+        tot["dong"] = attach_dong_key(tot, m.reset_index())
+        m["floating"] = tot.groupby("dong")["floating"].sum().reindex(m.index)
+        m["floating_ym"] = latest
+    else:
+        m["floating"] = np.nan
     m["people"] = m["resident"].fillna(0) + m["worker"].fillna(0)
     return m
+
+
+def school_score(m: pd.DataFrame):
+    """학교·학원 근접: 중·고교 수 60% + 학생 학원 수 40% (학교 자료가 없으면 학원 수만)."""
+    if m["schools_mid_high"].notna().any():
+        return pct_rank(m["schools_mid_high"]) * 0.6 + pct_rank(m["academies"]) * 0.4
+    return pct_rank(m["academies"])
+
+
+def floating_score(m: pd.DataFrame):
+    """유동: 경기도 유동인구가 있으면 그것을, 없으면 버스정류장 수로 대신합니다 (둘 다 없으면 None)."""
+    if m["floating"].notna().any():
+        return pct_rank(m["floating"])
+    if m["bus_stops"].notna().any() and m["bus_stops"].sum() > 0:
+        return pct_rank(m["bus_stops"])
+    return None
 
 
 # ---------------------------------------------------------------- 인허가 안정성
@@ -207,9 +277,9 @@ def score_preset(region_key: str, preset_key: str = "coffee_snack", data: dict |
     # --- 수요
     dparts = {
         "target_age": pct_rank(m["target_share"]) if m["target_share"].notna().any() else None,
-        "school": pct_rank(m["academies"]),
+        "school": school_score(m),
         "worker": pct_rank(m["worker"]) if m["worker"].notna().any() else None,
-        "floating": None,  # 유동·방문인구: 아직 수집 전
+        "floating": floating_score(m),  # 동네 유동인구 자료가 없어 버스정류장 수로 대신
         "resident": pct_rank(m["resident"]) if m["resident"].notna().any() else None,
     }
     m["D"], d_missing = weighted(dparts, pc["demand"])
@@ -253,17 +323,22 @@ def score_preset(region_key: str, preset_key: str = "coffee_snack", data: dict |
     m["hold_reason"] = hold
     m.loc[m["hold_reason"] != "", "score"] = np.nan
 
-    m = m.reset_index()
+    m = attach_rent(m.reset_index(), region_key)
     m["reasons"] = [_reasons_coffee(r, m) for _, r in m.iterrows()]
     m = m.sort_values(["score", "D"], ascending=[False, False], na_position="last").reset_index(drop=True)
     m["rank"] = np.where(m["score"].notna(), np.arange(1, len(m) + 1), np.nan)
 
-    missing_labels = {"floating": "유동·방문인구", "school": "학교 위치", "cost": "임대료"}
+    missing_labels = {"floating": "유동인구", "school": "학교 위치", "cost": "임대료"}
+    proxies = []
+    if dparts["floating"] is not None and not m["floating"].notna().any():
+        proxies.append("유동인구(버스정류장 수로 대신)")
+    if not m["schools_mid_high"].notna().any():
+        proxies.append("학교 위치(학원 수로 대신)")
     info = {
         "preset": pc["name"],
         "periods": data["periods"],
         "used_axes": {k: round(aw[k] / total_w * 100) for k in used},
-        "missing": [missing_labels.get(k, k) for k in d_missing] + ["학교 위치(학원 수로 대신)", "임대료"],
+        "missing": [missing_labels.get(k, k) for k in d_missing] + proxies + ["임대료(조사 상권만 표시·점수 미반영)"],
         "asof": asof.isoformat(),
     }
     return m, info
@@ -293,6 +368,18 @@ def _reasons_coffee(r: pd.Series, m: pd.DataFrame) -> list:
     if pd.notna(r.get("cafe_per10k")):
         add(r["cafe_per10k"] <= city_cafe, (r["cafe_per10k"] - city_cafe) / city_cafe,
             f"인구 1만 명당 카페 {r['cafe_per10k']:.1f}개 (시 평균 {city_cafe:.1f}개)")
+    avg_sch = m["schools_mid_high"].mean()
+    if pd.notna(r.get("schools_mid_high")) and avg_sch:
+        add(r["schools_mid_high"] >= avg_sch, (r["schools_mid_high"] - avg_sch) / avg_sch,
+            f"중·고등학교 {int(r['schools_mid_high'])}곳 (동네 평균 {avg_sch:.1f}곳)")
+    avg_fl = m["floating"].mean()
+    if pd.notna(r.get("floating")) and avg_fl:
+        add(r["floating"] >= avg_fl, (r["floating"] - avg_fl) / avg_fl,
+            f"유동인구가 동네 평균의 {r['floating'] / avg_fl:.1f}배 (경기도 집계 {r.get('floating_ym', '')})")
+    avg_bus = m["bus_stops"].mean()
+    if pd.notna(r.get("bus_stops")) and avg_bus:
+        add(r["bus_stops"] >= avg_bus, (r["bus_stops"] - avg_bus) / avg_bus * 0.8,
+            f"버스정류장 {int(r['bus_stops'])}곳 (동네 평균 {avg_bus:.0f}곳)")
     avg_acad = m["academies"].mean()
     if avg_acad:
         add(r["academies"] >= avg_acad, (r["academies"] - avg_acad) / avg_acad,
@@ -422,7 +509,7 @@ def score_category(region_key: str, scls_cd: str, demand_type: str, data: dict |
     dparts = {
         "target_age": pct_rank(m["target_share"]) if m["target_share"].notna().any() else None,
         "worker": pct_rank(m["worker"]) if m["worker"].notna().any() else None,
-        "floating": None,
+        "floating": floating_score(m),
         "resident": pct_rank(m["resident"]) if m["resident"].notna().any() else None,
     }
     m["D"], d_missing = weighted(dparts, w)
@@ -454,7 +541,7 @@ def score_category(region_key: str, scls_cd: str, demand_type: str, data: dict |
         hold = np.where((hold == "") & m["S"].isna(), "인허가 이력 부족", hold)
     m["hold_reason"] = hold
     m.loc[m["hold_reason"] != "", "score"] = np.nan
-    m = m.reset_index()
+    m = attach_rent(m.reset_index(), region_key)
 
     def reasons(r):
         out = [f"인구 1만 명당 {scls_nm} {r['comp_per10k']:.1f}개 (시 평균 {city_per10k:.1f}개)"]
@@ -471,6 +558,8 @@ def score_category(region_key: str, scls_cd: str, demand_type: str, data: dict |
     m["rank"] = np.where(m["score"].notna(), np.arange(1, len(m) + 1), np.nan)
     info = {"preset": scls_nm, "periods": data["periods"],
             "used_axes": {k: round(aw[k] / total_w * 100) for k in used},
-            "missing": ["유동·방문인구", "임대료"] + ([] if lic is not None else ["개·폐업 이력(음식점만 제공)"]),
+            "missing": ([] if m["floating"].notna().any() else
+                        ["유동인구(버스정류장 수로 대신)"] if dparts["floating"] is not None else ["유동인구"])
+                       + ["임대료(조사 상권만 표시·점수 미반영)"] + ([] if lic is not None else ["개·폐업 이력(음식점만 제공)"]),
             "target_ages": ages, "asof": asof.isoformat()}
     return m, info

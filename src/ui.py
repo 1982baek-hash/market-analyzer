@@ -137,3 +137,16 @@ def dong_score_map(data: dict, table: pd.DataFrame, height: int = 420):
                                          f"transform:translate(10px,-18px)'>{int(r['rank'])}위 {r['adong_nm']}</div>"),
             ).add_to(fmap)
     st_folium(fmap, height=height, use_container_width=True, returned_objects=[])
+
+
+def rent_line(r) -> str:
+    """조사된 상권이면 '㎡당 월 임대료와 10평(33㎡) 기준 대략 금액' 한 줄."""
+    import math
+    if not isinstance(r.get("rent_district"), str):
+        return ""
+    small, large = r.get("rent_small"), r.get("rent_large")
+    val, kind = (small, "소규모") if small is not None and not (isinstance(small, float) and math.isnan(small)) else (large, "중대형")
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return ""
+    return (f"💰 {kind} 상가 임대료 ㎡당 월 {val:.1f}천원 → 10평(33㎡) 약 {val * 33 / 10:.0f}만원 "
+            f"({r['rent_district']} 상권 평균, {r.get('rent_period', '')})")
