@@ -72,8 +72,11 @@ def naver(query: str, cid: str, secret: str, timeout: int = 8) -> list[dict]:
     r = requests.get("https://naverapihub.apigw.ntruss.com/search/v1/news", params={**params, "format": "json"},
                      headers={"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": secret}, timeout=timeout)
     if r.status_code in (401, 403):
+        hub = f"HUB {r.status_code} {r.text[:150]}"
         r = requests.get("https://openapi.naver.com/v1/search/news.json", params=params,
                          headers={"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": secret}, timeout=timeout)
+        if not r.ok:
+            raise RuntimeError(f"{hub} | 개발자센터 {r.status_code} {r.text[:150]}")
     r.raise_for_status()
     out = []
     for it in r.json().get("items", []):
@@ -106,7 +109,7 @@ def collect(queries: list[str], must: list[str] | None = None, days: int = 90,
             except Exception as e:  # noqa: BLE001
                 resp = getattr(e, "response", None)
                 body = (resp.text[:150].replace("\n", " ") if resp is not None else "")
-                errors.append(f"네이버 뉴스 '{q}': {type(e).__name__} {getattr(resp, 'status_code', '')} {body}")
+                errors.append(f"네이버 뉴스 '{q}': {type(e).__name__} {getattr(resp, 'status_code', '')} {body or str(e)[:320]}")
     since = datetime.now(KST) - timedelta(days=days)
     seen, out = set(), []
     for it in sorted(items, key=lambda x: x["date"] or datetime.min.replace(tzinfo=KST), reverse=True):

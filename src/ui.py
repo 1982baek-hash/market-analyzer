@@ -197,7 +197,7 @@ def summary_card(title: str, prof: dict) -> None:
 
 # ---------------------------------------------------------------- 상권 주변 뉴스
 @st.cache_data(ttl=6 * 3600, show_spinner="최근 뉴스를 찾는 중입니다...")
-def _news(queries: tuple, must: tuple, days: int, topic_only: bool, keys: tuple):
+def _news(queries: tuple, must: tuple, days: int, topic_only: bool, keys: tuple, ver: int = 3):
     from src import news
     items, errors = news.collect(list(queries), list(must) or None, days, keys if all(keys) else None)
     if errors and len(errors) >= len(queries) * (2 if all(keys) else 1):
@@ -207,9 +207,12 @@ def _news(queries: tuple, must: tuple, days: int, topic_only: bool, keys: tuple)
     return items, errors
 
 
+NEWS_CACHE_VER = 3  # 뉴스 코드를 고치면 올려서 6시간 캐시를 비움
+
+
 def _news_safe(*args):
     try:
-        return _news(*args)
+        return _news(*args, ver=NEWS_CACHE_VER)
     except Exception as e:  # noqa: BLE001
         return [], [str(e)]
 
