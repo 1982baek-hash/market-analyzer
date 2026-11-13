@@ -1,16 +1,13 @@
-"""소상공인365에서 옮겨 적은 동네 자료 (config/sbiz_floating.yaml) 읽기·요약.
+"""소상공인365에서 옮겨 적은 동네별 자료 (data/sbiz/{지역}/{동}.yaml) 읽기·요약.
 
-소상공인365의 좋은 기능 중 우리 앱에 없던 것을 가져왔습니다.
-- 유동인구 구성: 성별·연령·요일·시간대 (동네 vs 안동시 평균)
-- 업종 매출 추이: 점포당 월평균 매출 13개월 (동네 vs 안동시)
-- 분석결과 해설: 숫자를 한 문장으로 풀어 주는 해설
-- 상권 비교: 동네끼리 유동인구·매출·연령 구성을 한 표로
-- 업력 현황: 지금 영업 중인 가게가 문을 연 지 얼마나 됐는지 (우리 인허가 자료로 계산)
+동네마다 파일 하나: 그 동네의 유동인구 구성, 카페 매출(동 전체·반경 500m), 매출 구성,
+배달 매출, 반경 500m 방문 고객 특성. 다른 동네 자료와 섞지 않고 그 동네 값 그대로 씁니다.
 """
 
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,6 +15,7 @@ import yaml
 
 from src import scoring
 
+DATA_DIR = scoring.ROOT / "data" / "sbiz"
 AGE = ["10대", "20대", "30대", "40대", "50대", "60대+"]
 HOUR = ["05–09시", "09–12시", "12–14시", "14–18시", "18–23시", "23–05시"]
 WEEK = ["월", "화", "수", "목", "금", "토", "일"]
@@ -25,19 +23,42 @@ CITY = {"andong": "안동시", "seongnam": "성남시", "yecheon": "예천군"}
 _cache: dict = {}
 
 
-def load() -> dict:
-    p = scoring.SBIZ_FLOATING_YAML
-    if not p.exists():
-        return {}
-    key = p.stat().st_mtime_ns
-    if _cache.get("key") != key:
-        with open(p, encoding="utf-8") as f:
-            _cache.update(key=key, data=yaml.safe_load(f) or {})
-    return _cache["data"]
+def _files(region_key: str) -> list[Path]:
+    d = DATA_DIR / region_key
+    return sorted(d.glob("*.yaml")) if d.exists() else []
 
 
-def period() -> str:
-    return str(load().get("period", ""))
+def _load_region(region_key: str) -> dict:
+    files = _files(region_key)
+    key = tuple((p.name, p.stat().st_mtime_ns) for p in files)
+    if _cache.get(region_key, {}).get("key") != key:
+        data = {}
+        for p in files:
+            with open(p, encoding="utf-8") as f:
+                y = yaml.safe_load(f) or {}
+            data[y.get("name", p.stem)] = y
+        _cache[region_key] = {"key": key, "data": data}
+    return _cache[region_key]["data"]
+
+
+def get(region_key: str, dong_nm: str) -> dict:
+    return _load_region(region_key).get(dong_nm) or {}
+
+
+def period(region_key: str = "andong") -> str:
+    city = get(region_key, CITY.get(region_key, ""))
+    return str(city.get("period", "")) if city else ""
+
+
+def dongs(region_key: str) -> list[str]:
+    city = CITY.get(region_key)
+    return [d for d in _load_region(region_key) if d != city]
+
+
+def floating_totals(region_key: str) -> dict:
+    """{동: 일평균 유동인구}"""
+    return {d: v["floating_daily"] for d, v in _load_region(region_key).items()
+            if v.get("floating_daily") and d != CITY.get(region_key)}
 
 
 def _shares(v) -> np.ndarray:
@@ -46,12 +67,13 @@ def _shares(v) -> np.ndarray:
 
 
 def detail(region_key: str, dong_nm: str) -> dict | None:
-    """{'sex','age','weekday','hour': 비율(%) 배열, 'total': 일평균} — 자료가 없으면 None."""
-    d = ((load().get("detail") or {}).get(region_key) or {}).get(dong_nm)
-    if not d:
+    """유동인구 구성 비율(%) {'sex','age','weekday','hour', 'total'}"""
+    y = get(region_key, dong_nm)
+    fl = y.get("floating")
+    if not fl:
         return None
-    out = {k: _shares(d[k]) for k in ("sex", "age", "weekday", "hour") if k in d}
-    out["total"] = (load().get("regions") or {}).get(region_key, {}).get(dong_nm) or int(sum(d.get("sex", [0])))
+    out = {k: _shares(fl[k]) for k in ("sex", "age", "weekday", "hour") if k in fl}
+    out["total"] = y.get("floating_daily") or int(sum(fl.get("sex", [0])))
     return out
 
 
@@ -59,95 +81,125 @@ def city_detail(region_key: str) -> dict | None:
     return detail(region_key, CITY.get(region_key, ""))
 
 
-def sales_series(region_key: str, dong_nm: str, item: str = "카페") -> pd.Series:
-    """점포당 월평균 매출(만원) — index: 'YYYY.MM'"""
-    s = load().get("sales") or {}
-    months = s.get("months") or []
-    vals = ((s.get(region_key) or {}).get(dong_nm) or {}).get(item)
-    if vals is None:
+def _month_index(months) -> list[str]:
+    return [f"{str(m)[:4]}.{str(m)[4:]}" for m in months]
+
+
+def sales_series(region_key: str, dong_nm: str, item: str = "카페", which: str = "dong") -> pd.Series:
+    """카페 점포당 월평균 매출(만원). which='dong'(동 전체) 또는 'r500'(동 중심 반경 500m)"""
+    cs = get(region_key, dong_nm).get("cafe_sales") or {}
+    vals = cs.get(which)
+    if item != "카페" or not vals:
         return pd.Series(dtype=float)
-    if not isinstance(vals, list):  # 예전 형식: 숫자 하나
-        return pd.Series([float(vals)], index=["최근"])
-    idx = [f"{str(m)[:4]}.{str(m)[4:]}" for m in months[: len(vals)]]
-    return pd.Series([np.nan if v is None else float(v) for v in vals], index=idx)
+    return pd.Series([np.nan if v is None else float(v) for v in vals], index=_month_index(cs["months"][: len(vals)]))
 
 
-def latest_sales(region_key: str, dong_nm: str, item: str = "카페") -> tuple[float, str] | None:
-    s = sales_series(region_key, dong_nm, item).dropna()
+def latest_sales(region_key: str, dong_nm: str, item: str = "카페", which: str = "dong") -> tuple[float, str] | None:
+    s = sales_series(region_key, dong_nm, item, which).dropna()
     return (float(s.iloc[-1]), s.index[-1]) if len(s) else None
 
 
-def yoy(region_key: str, dong_nm: str, item: str = "카페") -> float | None:
-    """같은 달 1년 전 대비 증감률 (마지막 달과 13개월 전 첫 달이 모두 있을 때)"""
-    s = sales_series(region_key, dong_nm, item)
+def yoy(region_key: str, dong_nm: str, item: str = "카페", which: str = "dong") -> float | None:
+    """마지막 달 vs 1년 전 같은 달"""
+    s = sales_series(region_key, dong_nm, item, which)
     if len(s) == 13 and pd.notna(s.iloc[0]) and pd.notna(s.iloc[-1]) and s.iloc[0]:
         return s.iloc[-1] / s.iloc[0] - 1
     return None
 
 
-def dongs(region_key: str) -> list[str]:
-    city = CITY.get(region_key)
-    return [d for d in ((load().get("detail") or {}).get(region_key) or {}) if d != city]
+def sales_note(region_key: str, dong_nm: str) -> str:
+    return (get(region_key, dong_nm).get("cafe_sales") or {}).get("note", "")
 
 
-# ---------------------------------------------------------------- 분석결과 해설
+def sales_mix(region_key: str, dong_nm: str, which: str = "dong") -> dict | None:
+    """카페 매출 구성(%) {'weekday','hour','sex','age'}"""
+    m = (get(region_key, dong_nm).get("cafe_sales_mix") or {}).get(which)
+    return {k: np.array(v, dtype=float) for k, v in m.items()} if m else None
+
+
+def delivery(region_key: str, dong_nm: str) -> pd.DataFrame:
+    """카페 배달 매출(만원/월): index 월, columns 남·여·합계"""
+    d = get(region_key, dong_nm).get("cafe_delivery")
+    if not d:
+        return pd.DataFrame()
+    t = pd.DataFrame({"남": d["male"], "여": d["female"]}, index=_month_index(d["months"]))
+    t["합계"] = t["남"] + t["여"]
+    return t
+
+
+def customers(region_key: str, dong_nm: str) -> dict | None:
+    return get(region_key, dong_nm).get("customers_r500")
+
+
+# ---------------------------------------------------------------- 분석결과 해설 (그 동네 값만)
 def commentary(region_key: str, dong_nm: str, item: str = "카페") -> list[str]:
-    """소상공인365의 '분석결과 해설'처럼 숫자를 문장으로."""
     d, c = detail(region_key, dong_nm), city_detail(region_key)
     city = CITY.get(region_key, "시")
     out = []
     if d is not None:
-        h = int(np.argmax(d["hour"]))
-        w = int(np.argmax(d["weekday"]))
-        young = d["age"][0] + d["age"][1]
-        line = (f"하루 평균 **{d['total']:,}명**이 지나가고, **{HOUR[h]}**({d['hour'][h]:.0f}%)와 "
-                f"**{WEEK[w]}요일**에 가장 많습니다.")
-        out.append(line)
+        h, w = int(np.argmax(d["hour"])), int(np.argmax(d["weekday"]))
+        out.append(f"하루 평균 **{d['total']:,}명**이 지나가고, **{HOUR[h]}**({d['hour'][h]:.0f}%)와 **{WEEK[w]}요일**에 가장 많습니다.")
         if c is not None:
-            cy = c["age"][0] + c["age"][1]
+            young, cy = d["age"][0] + d["age"][1], c["age"][0] + c["age"][1]
             diff = young - cy
             if abs(diff) <= 0.5:
                 out.append(f"10–20대 비중은 **{young:.0f}**%로 {city} 평균({cy:.0f}%)과 비슷합니다.")
             else:
-                word = "높습니다" if diff > 0 else "낮습니다"
-                out.append(f"10–20대 비중은 **{young:.0f}**%로 {city} 평균({cy:.0f}%)보다 {word} ({diff:+.1f}%p).")
-            wk = d["weekday"][5] + d["weekday"][6]
-            cwk = c["weekday"][5] + c["weekday"][6]
-            if abs(wk - cwk) >= 2:
-                out.append(f"주말(토·일) 유동 비중이 {wk:.0f}%로 {city}({cwk:.0f}%)보다 "
-                           + ("높아 **주말 장사**가 유리한 동네입니다." if wk > cwk else "낮아 **평일 장사** 중심 동네입니다."))
-    ls = latest_sales(region_key, dong_nm, item)
-    cs = latest_sales(region_key, city, item)
+                out.append(f"10–20대 비중은 **{young:.0f}**%로 {city} 평균({cy:.0f}%)보다 {'높습니다' if diff > 0 else '낮습니다'} ({diff:+.1f}%p).")
+    ls, cs = latest_sales(region_key, dong_nm, item), latest_sales(region_key, city, item)
     if ls:
-        txt = f"{item} 점포당 월매출은 **{ls[0]:,.0f}만원**({ls[1]})"
+        txt = f"{item} 한 곳당 월매출은 **{ls[0]:,.0f}만원**({ls[1]})"
         if cs:
             txt += f"으로 {city} 평균({cs[0]:,.0f}만원)의 **{ls[0] / cs[0]:.1f}배**"
         g = yoy(region_key, dong_nm, item)
         if g is not None:
-            txt += f", 1년 전보다 {g * 100:+.0f}%"
+            txt += f", 1년 전보다 **{g * 100:+.0f}**%"
         out.append(txt + "입니다.")
+    mx = sales_mix(region_key, dong_nm)
+    if mx is not None:
+        wk = mx["weekday"][5] + mx["weekday"][6]
+        h = int(np.argmax(mx["hour"]))
+        a = int(np.argmax(mx["age"]))
+        kind = "**주말 장사**" if wk >= 40 else "**평일 장사**" if wk <= 30 else "평일·주말 고른"
+        out.append(f"카페 매출은 주말(토·일)이 {wk:.0f}%인 {kind} 동네이고, **{HOUR[h]}**에 {mx['hour'][h]:.0f}%가 팔리며 "
+                   f"주 고객은 **{AGE[a]}**({mx['age'][a]:.0f}%)입니다.")
+    dv = delivery(region_key, dong_nm)
+    if len(dv) == 13:
+        g = dv["합계"].iloc[-1] / dv["합계"].iloc[0] - 1 if dv["합계"].iloc[0] else None
+        out.append(f"카페 배달 매출은 월 **{dv['합계'].iloc[-1]:,.0f}만원**({dv.index[-1]})"
+                   + (f", 1년 전보다 {g * 100:+.0f}%" if g is not None else "")
+                   + f" · 주문자 여성 {dv['여'].sum() / dv['합계'].sum() * 100:.0f}%.")
+    cu = customers(region_key, dong_nm)
+    if cu:
+        out.append(f"반경 500m 카페 손님은 신규 {cu['new_regular'][0]:.0f}% · 단골 {cu['new_regular'][1]:.0f}%"
+                   f"(월 3회 이상 방문)입니다.")
     return out
 
 
-# ---------------------------------------------------------------- 상권 비교
+# ---------------------------------------------------------------- 상권 비교 (참고용)
 def compare_table(region_key: str, scores: pd.DataFrame | None = None, item: str = "카페") -> pd.DataFrame:
     rows = []
     for nm in dongs(region_key):
         d = detail(region_key, nm)
+        if d is None:
+            continue
         ls = latest_sales(region_key, nm, item)
-        row = {"동네": nm, "일평균 유동인구(명)": d["total"],
-               "10–20대 %": round(d["age"][0] + d["age"][1], 1),
-               "14–18시 %": round(d["hour"][3], 1),
-               "주말 %": round(d["weekday"][5] + d["weekday"][6], 1),
-               f"{item} 월매출(만원)": ls[0] if ls else np.nan}
+        mx = sales_mix(region_key, nm)
+        dv = delivery(region_key, nm)
         g = yoy(region_key, nm, item)
-        row["매출 1년 증감 %"] = float(round(g * 100)) if g is not None else np.nan
-        rows.append(row)
+        rows.append({
+            "동네": nm, "일평균 유동인구(명)": d["total"],
+            "10–20대 %": round(d["age"][0] + d["age"][1], 1),
+            f"{item} 월매출(만원)": ls[0] if ls else np.nan,
+            "매출 1년 증감 %": float(round(g * 100)) if g is not None else np.nan,
+            "주말 매출 %": round(mx["weekday"][5] + mx["weekday"][6], 1) if mx is not None else np.nan,
+            "배달 월매출(만원)": float(dv["합계"].iloc[-1]) if len(dv) else np.nan,
+        })
     t = pd.DataFrame(rows)
     if scores is not None and len(t):
         sc = scores.set_index(scores["adong_nm"].astype(str).str.strip())["score"]
         t["입지 점수"] = t["동네"].map(sc).round(0)
-    return t.sort_values("일평균 유동인구(명)", ascending=False).reset_index(drop=True)
+    return t.sort_values("일평균 유동인구(명)", ascending=False).reset_index(drop=True) if len(t) else t
 
 
 # ---------------------------------------------------------------- 업력 현황 (우리 인허가 자료)
@@ -155,7 +207,6 @@ AGE_BINS = [(0, 1, "1년 미만"), (1, 2, "1–2년"), (2, 3, "2–3년"), (3, 5
 
 
 def business_age(data: dict, adong_cd: str | None, bzstat: list[str], today: date | None = None) -> pd.Series:
-    """지금 영업 중인 가게가 문을 연 지 몇 년 됐는지 구간별 가게 수 (adong_cd=None이면 시 전체)."""
     lic = data.get("licenses", {}).get("rest_cafes")
     if lic is None:
         return pd.Series(dtype=int)

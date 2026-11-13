@@ -221,7 +221,8 @@ def sbiz_sales(region_key: str, dong_nm: str, scls_nm: str) -> float | None:
 
 
 def diagnose(table: pd.DataFrame, dong_cd: str, sales: float, rent: float, deposit: float, area_pyeong: float,
-             area_avg_sales: float | None = None, comp_change: tuple[int, int] | None = None) -> dict:
+             area_avg_sales: float | None = None, comp_change: tuple[int, int] | None = None,
+             dong_yoy: float | None = None, dong_nm: str = "") -> dict:
     """입지 점수·임대료 부담·매출 수준·경쟁 변화를 모아 '유지 / 개선 / 이전 검토'를 판단합니다.
 
     table: 입지 점수표 (score, rank, adong_cd, adong_nm, rent_small …) — 같은 업종으로 계산한 것
@@ -288,7 +289,14 @@ def diagnose(table: pd.DataFrame, dong_cd: str, sales: float, rent: float, depos
             factors.append(("⚠️" if p < 0 else "🟡" if ch > 0 else "✅",
                             f"반경 안 같은 업종 {a}곳 → {b}곳 (5년, {ch * 100:+.0f}%)"))
 
-    # 5) 더 나은 동네
+    # 5) 이 동네 카페 매출 흐름 (소상공인365, 그 동네 값)
+    if dong_yoy is not None:
+        p = 1 if dong_yoy >= 0.1 else -1 if dong_yoy <= -0.15 else 0
+        pts += p
+        factors.append(("✅" if p > 0 else "⚠️" if p < 0 else "🟡",
+                        f"{dong_nm or '이 동네'} 카페 한 곳당 매출이 1년 전보다 {dong_yoy * 100:+.0f}% (소상공인365)"))
+
+    # 6) 더 나은 동네
     alts = scored[scored["adong_cd"] != dong_cd]
     if pd.notna(cur_score):
         alts = alts[alts["score"] > cur_score]  # 지금 동네보다 점수가 높은 곳만

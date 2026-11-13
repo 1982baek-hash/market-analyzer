@@ -20,7 +20,6 @@ TYPES_YAML = ROOT / "config" / "business_types.yaml"
 REGIONS_YAML = ROOT / "config" / "regions.yaml"
 CATEGORY_CSV = ROOT / "config" / "category_mapping.csv"
 RENT_YAML = ROOT / "config" / "rent_districts.yaml"
-SBIZ_FLOATING_YAML = ROOT / "config" / "sbiz_floating.yaml"
 
 NOT_PROVIDED = "이 지역은 제공되지 않음"
 
@@ -69,12 +68,9 @@ def load_region_data(region_key: str) -> dict:
 
 
 def sbiz_floating(region_key: str) -> tuple[dict, str]:
-    """소상공인365에서 옮겨 적은 동네별 일평균 유동인구 {동 이름: 명}, 기준 시점."""
-    if not SBIZ_FLOATING_YAML.exists():
-        return {}, ""
-    with open(SBIZ_FLOATING_YAML, encoding="utf-8") as f:
-        y = yaml.safe_load(f) or {}
-    return (y.get("regions") or {}).get(region_key) or {}, str(y.get("period", ""))
+    """소상공인365 동네별 일평균 유동인구 {동 이름: 명}, 기준 시점 (data/sbiz/{지역}/{동}.yaml)."""
+    from src import sbiz
+    return sbiz.floating_totals(region_key), sbiz.period(region_key)
 
 
 def rent_table(region_key: str) -> pd.DataFrame:
