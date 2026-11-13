@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src import mystore, navermap, scoring, ui
+from src import mystore, navermap, sbiz, scoring, ui
 
 st.set_page_config(page_title="내 매장", page_icon="📍", layout="wide")
 ui.require_login()
@@ -134,7 +134,8 @@ if (st.session_state.get("diag_on") or place.get("monthly_sales")) and dong:
             tg = mystore.monthly_counts(lg, months=60) if not lg.empty else pd.DataFrame()
             if not tg.empty:
                 comp = (int(tg["count"].iloc[0]), int(tg["count"].iloc[-1]))
-        res = mystore.diagnose(table, dong_cd, sales, rent, deposit, area, avg_sales or None, comp)
+        res = mystore.diagnose(table, dong_cd, sales, rent, deposit, area, avg_sales or None, comp,
+                              sbiz.yoy(region, dong_nm, "카페") if grp == "cafe" else None, dong_nm)
         box = {"good": st.success, "mid": st.info, "bad": st.warning}[res["tone"]]
         box(f"### {res['verdict']}\n{dong_nm} · {scls_names[scls]} 기준 — {res['why']}")
         st.markdown("\n".join(f"- {icon} {text}" for icon, text in res["factors"]))

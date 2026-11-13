@@ -52,7 +52,8 @@ now = datetime.now(KST)
 regions = scoring.load_regions()
 
 st.title("🔄 데이터 현황")
-st.caption("앱은 데이터를 직접 받지 않습니다. GitHub Actions가 **매주 월요일 새벽 3시 17분** 공공데이터를 받아 저장소에 올리고, 앱은 그 파일을 읽습니다.")
+st.caption("앱은 데이터를 직접 받지 않습니다. GitHub Actions가 **매주 월요일 새벽 3시 17분** 공공데이터를 받아 저장소에 올리고, 앱은 그 파일을 읽습니다. "
+           "실패한 자료는 **매일 새벽 3시 47분** 그것만 다시 시도합니다 (실패 중에도 이전 자료는 그대로 보여 줌).")
 
 # ---------------------------------------------------------------- 요약
 rows = []
@@ -73,7 +74,7 @@ df = pd.DataFrame(rows)
 n_fail = int((df["code"] == "FAIL").sum()) if not df.empty else 0
 ui.stat_tiles([("마지막 자동 수집", fmt_dt(run.get("finished_at")), ""),
                ("다음 자동 수집", next_run(now).strftime("%m/%d(월) %H:%M"), "매주 월요일"),
-               ("실패한 자료", f"{n_fail}개", "실패하면 이전 자료 유지")])
+               ("실패한 자료", f"{n_fail}개", "매일 새벽 3시 47분 자동 재시도")])
 
 if df.empty:
     st.info(f"아직 자동 수집 기록이 없습니다. [GitHub Actions]({REPO}/actions)에서 **상권 데이터 자동 수집 → Run workflow**를 눌러 주세요.")
@@ -125,6 +126,7 @@ items = [
      "✅ 자동 수집 중" if gg_ok else "인증키(GG_API_KEY) 등록됨 → 다음 수집부터 반영", ""),
     ("안동·예천 유동인구", "공개 API 없음 → 버스정류장 수로 대신 봄", "안동시 정보공개청구 결과가 오면 반영"),
     ("카드 매출", "아직 없음", "금융데이터거래소 무료 상품 받은 뒤 반영"),
-    ("후보지 유동인구·추정매출", "앱 밖에서 확인", "[소상공인365](https://bigdata.sbiz.or.kr) 상권분석에서 후보지 조회"),
+    ("안동 동네별 유동인구·카페 매출·배달 (소상공인365)", "data/sbiz/andong/동네.yaml 에 동네마다 따로 저장",
+     "분기마다 '자료 업데이트 해줘'라고 하면 갱신"),
 ]
 st.markdown("\n".join(f"- **{a}** — {b}" + (f"  \n  ↳ {c}" if c else "") for a, b, c in items))

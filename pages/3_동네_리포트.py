@@ -79,22 +79,77 @@ if sd is not None or len(cafe_sales):
                             f"{city_nm} {sc['age'][0] + sc['age'][1]:.0f}%" if sc else ""),
                            ("14–18시 비중", f"{sd['hour'][3]:.0f}%", f"{city_nm} {sc['hour'][3]:.0f}%" if sc else "")])
     if len(cafe_sales):
-        city_sales = sbiz.sales_series(region, city_nm, "카페")
+        r500 = sbiz.sales_series(region, dong_nm, "카페", "r500")
         fig = go.Figure()
-        fig.add_scatter(x=cafe_sales.index, y=cafe_sales.values, name=dong_nm, mode="lines+markers",
-                        line=dict(color=colors["here"], width=2.5), connectgaps=True,
+        fig.add_scatter(x=cafe_sales.index, y=cafe_sales.values, name=f"{dong_nm} 전체", mode="lines+markers",
+                        line=dict(color=colors["here"], width=2.5),
                         hovertemplate="%{x} %{y:,.0f}만원<extra>" + dong_nm + "</extra>")
-        if len(city_sales):
-            fig.add_scatter(x=city_sales.index, y=city_sales.values, name=f"{city_nm} 평균", mode="lines",
-                            line=dict(color="#888", width=2, dash="dot"),
-                            hovertemplate="%{x} %{y:,.0f}만원<extra>" + city_nm + "</extra>")
-        fig.update_layout(height=260, margin=dict(l=10, r=10, t=30, b=10), hovermode="x unified",
+        if len(r500):
+            fig.add_scatter(x=r500.index, y=r500.values, name="동 중심 반경 500m", mode="lines+markers",
+                            line=dict(color="#4C78A8", width=2), marker=dict(size=5),
+                            hovertemplate="%{x} %{y:,.0f}만원<extra>반경 500m</extra>")
+        fig.update_layout(height=270, margin=dict(l=10, r=10, t=30, b=10), hovermode="x unified",
                           xaxis=dict(type="category", tickangle=0, nticks=7), yaxis=dict(tickformat=","),
-                          title=dict(text="카페 점포당 월평균 매출 (만원)", font=dict(size=14), x=0),
+                          title=dict(text="카페 한 곳당 월평균 매출 (만원)", font=dict(size=14), x=0),
                           legend=dict(orientation="h", y=1.18, x=1, xanchor="right"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption(f"출처: 소상공인365 빅데이터 상권분석 ({sbiz.period()} 기준, 통신·카드 자료 기반 추정) · "
-               "값은 config/sbiz_floating.yaml에 옮겨 적은 것이라 분기마다 손으로 갱신합니다.")
+        if sbiz.sales_note(region, dong_nm):
+            st.caption("반경 500m 안 카페가 3곳 이하라 소상공인365가 반경 값 대신 동 평균을 보여 줍니다.")
+
+    # 카페 매출 구성 (이 동네) — 언제·누가 사는가
+    mx, mxr = sbiz.sales_mix(region, dong_nm), sbiz.sales_mix(region, dong_nm, "r500")
+    if mx is not None:
+        st.markdown("**카페 매출은 언제·누구에게서 나오나** (매출 비중 %)")
+
+    def _mix_bar(labels, dong_v, r_v, title, height=220):
+        fig = go.Figure()
+        fig.add_bar(x=labels, y=dong_v, name=f"{dong_nm} 전체", marker_color=colors["here"],
+                    hovertemplate="%{x} %{y:.1f}%<extra></extra>")
+        if r_v is not None:
+            fig.add_bar(x=labels, y=r_v, name="반경 500m", marker_color="#4C78A8",
+                        hovertemplate="%{x} %{y:.1f}%<extra>반경 500m</extra>")
+        fig.update_layout(barmode="group", height=height, margin=dict(l=10, r=10, t=30, b=10),
+                          title=dict(text=title, font=dict(size=14), x=0), yaxis=dict(ticksuffix="%"),
+                          legend=dict(orientation="h", y=1.2, x=1, xanchor="right"), bargap=0.25)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    if mx is not None:
+        m1, m2 = st.columns(2)
+        with m1:
+            _mix_bar(sbiz.WEEK, mx["weekday"], mxr["weekday"] if mxr else None, "요일별 카페 매출")
+        with m2:
+            _mix_bar(sbiz.HOUR, mx["hour"], mxr["hour"] if mxr else None, "시간대별 카페 매출")
+        m3, m4 = st.columns(2)
+        with m3:
+            _mix_bar(sbiz.AGE, mx["age"], mxr["age"] if mxr else None, "연령대별 카페 매출")
+        with m4:
+            dv = sbiz.delivery(region, dong_nm)
+            if len(dv):
+                fig = go.Figure()
+                fig.add_bar(x=dv.index, y=dv["여"], name="여성 주문", marker_color="#E45756",
+                            hovertemplate="%{x} 여성 %{y:,}만원<extra></extra>")
+                fig.add_bar(x=dv.index, y=dv["남"], name="남성 주문", marker_color="#4C78A8",
+                            hovertemplate="%{x} 남성 %{y:,}만원<extra></extra>")
+                fig.update_layout(barmode="stack", height=220, margin=dict(l=10, r=10, t=30, b=10),
+                                  title=dict(text="카페 배달 매출 (만원/월)", font=dict(size=14), x=0),
+                                  xaxis=dict(type="category", tickangle=0, nticks=5),
+                                  legend=dict(orientation="h", y=1.2, x=1, xanchor="right"))
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    cu = sbiz.customers(region, dong_nm)
+    if cu:
+        with st.expander("반경 500m 카페 손님 특성 (소상공인365 고객특성)"):
+            ui.stat_tiles([
+                ("방문 손님 남 : 여", f"{cu['visit_sex'][0]:.0f} : {cu['visit_sex'][1]:.0f}", ""),
+                ("신규 : 단골", f"{cu['new_regular'][0]:.0f} : {cu['new_regular'][1]:.0f}", "단골 = 월 3회 이상 방문"),
+                ("손님 연소득 (남 / 여)", f"{cu['income_m']:,} / {cu['income_f']:,}만원",
+                 f"지역 평균 {cu['income_area']:,}만원" if cu.get("income_area") else ""),
+            ])
+            top = lambda d: ", ".join(f"{k} {v:g}%" for k, v in d.items() if k != "기타")
+            st.caption(f"남성 손님 관심사: {top(cu['lifestyle_m'])}  \n여성 손님 관심사: {top(cu['lifestyle_f'])}")
+            st.caption("소상공인365가 이 값을 넓은 권역 단위로 집계해 이웃 동과 같은 값이 나올 수 있습니다.")
+    st.caption(f"출처: 소상공인365 빅데이터 상권분석 › 상세분석 ({sbiz.period(region)} 기준, 통신·카드 자료 기반 추정) · "
+               f"이 동네 자료는 data/sbiz/{region}/{dong_nm}.yaml 에 따로 저장돼 있고 분기마다 갱신합니다.")
 
 st.divider()
 left, right = st.columns(2)

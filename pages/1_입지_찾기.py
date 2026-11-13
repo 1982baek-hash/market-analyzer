@@ -98,11 +98,12 @@ if len(cmp):
             "일평균 유동인구(명)": st.column_config.NumberColumn(format="localized"),
             "카페 월매출(만원)": st.column_config.NumberColumn(format="localized"),
             "매출 1년 증감 %": st.column_config.NumberColumn(format="%+d%%"),
+            "배달 월매출(만원)": st.column_config.NumberColumn(format="localized"),
             "입지 점수": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d"),
         },
     )
-    st.caption(f"소상공인365 상세분석 {sbiz.period()} 기준 (통신·카드 자료 기반 추정) · 카페 월매출은 점포당 평균(가장 최근 달, 일부 동네는 7월 또는 6월 값) · "
-               "자료가 있는 동네만 보입니다. 동네를 고르면 '동네 리포트'에서 시간대·연령 그래프를 볼 수 있어요.")
+    st.caption(f"소상공인365 상세분석 {sbiz.period(region)} 기준 (통신·카드 자료 기반 추정) · 카페 월매출은 한 곳당 평균 · "
+               "동네마다 따로 저장한 값이라 점수에는 섞지 않았습니다. 동네를 고르면 '동네 리포트'에서 그 동네 자료를 자세히 볼 수 있어요.")
 
 with st.expander("점수는 이렇게 계산해요"):
     st.markdown(
