@@ -10,3 +10,6 @@ __pycache__/
 data/raw/stores/
 data/logs/
 *.tmp
+
+# 앱이 실행 중에 만드는 지도 파일 (네이버 지도 iframe용)
+static/maps/
