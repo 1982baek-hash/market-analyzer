@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from src import scoring, ui
+from src import catsearch, scoring, ui
 
 st.set_page_config(page_title="업종 고르기", page_icon="🧭", layout="wide")
 ui.require_login()
@@ -11,13 +11,57 @@ st.caption("이 동네에 뭐가 부족할까? 시 전체와 비교해 이 동�
 
 region = ui.pick_region()
 data = ui.region_data(region)
-dong_cd, dong_nm = ui.pick_dong(data)
+dong_cd, dong_nm = ui.pick_dong(data, main=True)
 ui.period_badges(data["periods"])
 
 t = scoring.opportunity_table(data, dong_cd)
 if t.empty:
     st.info("비교할 업종이 없습니다.")
     st.stop()
+
+# ---------------- 업종 검색
+q = st.text_input("🔎 업종 검색", key="cat_q", placeholder="예: 김밥, 만두, 커피, 안경 (쉼표로 여러 개)")
+if q.strip():
+    stores = data["stores"]
+    cats = (stores.groupby("inds_scls_cd").agg(inds_scls_nm=("inds_scls_nm", "first"), inds_mcls_nm=("inds_mcls_nm", "first"),
+                                               inds_lcls_nm=("inds_lcls_nm", "first"), n=("store_id", "size")).reset_index())
+    found = catsearch.search(cats, q)
+    if not found:
+        st.info("찾는 업종이 없어요. 다른 말로 검색해 보세요 (예: '떡볶이' → 분식, '아메리카노' → 카페).")
+    else:
+        master = scoring.dong_master(data)
+        here = stores[scoring.attach_dong_key(stores, master) == dong_cd]
+        tt = t.set_index("inds_scls_cd")
+        n_city = cats.set_index("inds_scls_cd")["n"]
+        st.caption(f"{len(found)}개 업종 · {dong_nm} 기준 — 🟢 부족(기회) · ⚪ 보통 · 🔴 포화")
+        cols = st.columns(3)
+        for i, code in enumerate(found):
+            c = cats[cats["inds_scls_cd"] == code].iloc[0]
+            with cols[i % 3].container(border=True):
+                if code in tt.index:
+                    r = tt.loc[code]
+                    icon = {"부족": "🟢", "포화": "🔴"}.get(r["status"], "⚪")
+                    st.markdown(f"**{icon} {c['inds_scls_nm']}**  \n<small>{c['inds_lcls_nm']} › {c['inds_mcls_nm']}</small>",
+                                unsafe_allow_html=True)
+                    per = (f"1만 명당 {r['dong_per10k']:.1f}곳 (시 {r['city_per10k']:.1f}곳)"
+                           if pd.notna(r["dong_per10k"]) else "")
+                    st.markdown(f"{dong_nm} **{int(r['dong_cnt'])}곳** · 시 전체 {int(r['city_cnt'])}곳  \n"
+                                f"{r['status']} (LQ {r['lq']:.2f})" + (f" · 기회 점수 **{r['opportunity']:.0f}**"
+                                                                     if pd.notna(r["opportunity"]) else "")
+                                + (f"  \n<small>{per}</small>" if per else ""), unsafe_allow_html=True)
+                else:
+                    n_here = int((here["inds_scls_cd"] == code).sum())
+                    st.markdown(f"**{c['inds_scls_nm']}**  \n<small>{c['inds_lcls_nm']} › {c['inds_mcls_nm']}</small>",
+                                unsafe_allow_html=True)
+                    st.markdown(f"{dong_nm} **{n_here}곳** · 시 전체 {int(n_city[code])}곳  \n"
+                                "<small>시 전체 가게가 적거나 비교에서 뺀 업종이라 부족·포화 판단은 생략</small>",
+                                unsafe_allow_html=True)
+                if int(n_city[code]) >= 10 and st.button("📍 어느 동네가 좋을까?", key=f"go_{code}",
+                                                         help="입지 찾기에서 이 업종의 동네 순위를 봅니다"):
+                    st.session_state["loc_mode"] = "다른 업종"
+                    st.session_state["loc_scls"] = code
+                    st.switch_page("pages/1_입지_찾기.py")
+    st.divider()
 
 if t["opportunity"].isna().all():
     st.warning(f"{dong_nm}은(는) 점포가 30개 미만이라 업종별 비교가 흔들립니다. 아래 숫자는 참고만 해 주세요.")
