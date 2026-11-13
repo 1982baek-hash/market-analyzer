@@ -207,7 +207,7 @@ def _news(queries: tuple, must: tuple, days: int, topic_only: bool, keys: tuple,
     return items, errors
 
 
-NEWS_CACHE_VER = 3  # 뉴스 코드를 고치면 올려서 6시간 캐시를 비움
+NEWS_CACHE_VER = 4  # 뉴스 코드를 고치면 올려서 6시간 캐시를 비움
 
 
 def _news_safe(*args):
@@ -236,7 +236,9 @@ def news_section(region_key: str, dong_nm: str, extra: list[str] | None = None, 
     keys = (get_api_key("NAVER_SEARCH_CLIENT_ID"), get_api_key("NAVER_SEARCH_CLIENT_SECRET"))
     city = _city_short(region_key)
     terms = _dong_terms(dong_nm) + [e for e in (extra or []) if e]
-    dong_items, e1 = _news_safe(tuple(f"{city} {t}" for t in terms[:4]), tuple(terms), 90, False, keys)
+    # 동 이름 그대로는 단독으로, 줄인 이름(예: 강남)은 시 이름(안동)과 함께 있을 때만 이 동네 기사로 봄
+    must = tuple(t if (t == dong_nm or t in (extra or [])) else (t, city) for t in terms)
+    dong_items, e1 = _news_safe(tuple(f"{city} {t}" for t in terms[:4]), must, 90, False, keys)
     city_q = f"{city} (상권 OR 상가 OR 개점 OR 착공 OR 개통 OR 입주 OR 분양 OR 전통시장 OR 축제 OR 대학)"
     city_items, e2 = _news_safe((city_q,), (city,), 60, True, keys)
     shown = {i["link"] for i in dong_items}

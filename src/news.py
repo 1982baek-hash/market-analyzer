@@ -119,7 +119,9 @@ def collect(queries: list[str], must: list[str] | None = None, days: int = 90,
         seen.add(k)
         if it["date"] and it["date"] < since:
             continue
-        if must and not any(m in it["title"] for m in must):
+        # must: 글자 하나면 그 말이, 튜플이면 그 말들이 모두 제목에 있어야 함 (예: ('강남', '안동') → 서울 강남 기사 제외)
+        if must and not any((all(x in it["title"] for x in m) if isinstance(m, (tuple, list)) else m in it["title"])
+                            for m in must):
             continue
         topic, noise = classify(it["title"])
         if noise and not topic:
