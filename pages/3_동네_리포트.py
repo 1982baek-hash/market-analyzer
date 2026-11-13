@@ -23,14 +23,17 @@ pc = cfg["presets"]["coffee_snack"]
 
 # ---------------- 한눈에
 if row is not None:
-    c = st.columns(6)
-    c[0].metric("커피+간식 입지 점수", "판단 보류" if pd.isna(row["score"]) else f"{row['score']:.0f}점",
-                help=row["hold_reason"] or None)
-    c[1].metric("주민", f"{int(row['resident']):,}명" if pd.notna(row["resident"]) else scoring.NOT_PROVIDED)
-    c[2].metric("10–29세 비중", f"{row['target_share'] * 100:.0f}%" if pd.notna(row["target_share"]) else "–")
-    c[3].metric("직장인", f"{int(row['worker']):,}명" if pd.notna(row["worker"]) else scoring.NOT_PROVIDED)
-    c[4].metric("카페", f"{int(row['cafe_cnt'])}곳")
-    c[5].metric("간식점", f"{int(row['snack_cnt'])}곳")
+    ui.stat_tiles([
+        ("커피+간식 입지 점수", "판단 보류" if pd.isna(row["score"]) else f"{row['score']:.0f}점",
+         row["hold_reason"] or ""),
+        ("주민", f"{int(row['resident']):,}명" if pd.notna(row["resident"]) else "–",
+         "" if pd.notna(row["resident"]) else scoring.NOT_PROVIDED),
+        ("10–29세 비중", f"{row['target_share'] * 100:.0f}%" if pd.notna(row["target_share"]) else "–", ""),
+        ("직장인", f"{int(row['worker']):,}명" if pd.notna(row["worker"]) else "–",
+         "" if pd.notna(row["worker"]) else scoring.NOT_PROVIDED),
+        ("카페", f"{int(row['cafe_cnt'])}곳", ""),
+        ("간식점", f"{int(row['snack_cnt'])}곳", ""),
+    ])
     if row["reasons"]:
         st.markdown("  \n".join(row["reasons"]))
     rl = ui.rent_line(row)
@@ -62,7 +65,7 @@ with left:
         fig.update_layout(barmode="relative", height=360, margin=dict(l=10, r=10, t=10, b=10),
                           xaxis=dict(tickvals=ticks, ticktext=[f"{abs(v):,}" for v in ticks], title=None),
                           legend=dict(orientation="h", y=1.08), bargap=0.1)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.caption(f"주민등록 인구 {data['periods'].get('population', '')} 기준")
 
 # ---------------- 업종 구성
@@ -75,7 +78,7 @@ with right:
     fig = go.Figure(go.Bar(x=top.values, y=top.index, orientation="h", marker_color="#72B7B2",
                            hovertemplate="%{y} %{x}곳<extra></extra>"))
     fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption(f"점포 {len(here):,}곳 · 상가정보 {data['periods'].get('stores', '')} 기준")
 
 # ---------------- 개·폐업 추이
@@ -93,7 +96,7 @@ else:
                 hovertemplate="%{x} 폐업 %{customdata}곳<extra></extra>")
     fig.update_layout(barmode="relative", height=300, margin=dict(l=10, r=10, t=10, b=10),
                       legend=dict(orientation="h", y=1.1), xaxis=dict(dtick=1))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("올해는 지금까지의 건수입니다. 인허가 자료는 2일 전 기준으로 갱신됩니다.")
 
 # ---------------- 유동인구
@@ -110,7 +113,7 @@ with fc1:
                                    hovertemplate="%{x} %{y:.1f}%<extra></extra>"))
             fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(title="비율(%)"))
             st.markdown("**시간대별 유동인구 비율** (경기도 집계)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             st.caption(f"기준 {latest[:4]}.{latest[4:]} · 시간대코드는 경기데이터드림 정의(TZ01부터 이른 시간대 순)")
     bus = data.get("busstops")
     if bus is not None and len(bus):

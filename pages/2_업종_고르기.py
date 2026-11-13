@@ -26,13 +26,12 @@ if t["opportunity"].isna().all():
 cfg = scoring.load_config()["presets"]["coffee_snack"]
 mine = t[t["inds_scls_cd"].isin(cfg["groups"]["cafe"]["scls"] + cfg["groups"]["snack"]["scls"])]
 st.subheader(f"{dong_nm} · 커피·간식 업종 상태")
-cols = st.columns(min(len(mine), 4) or 1)
-for i, (_, r) in enumerate(mine.sort_values("lq").iterrows()):
-    with cols[i % len(cols)]:
-        icon = {"부족": "🟢", "포화": "🔴"}.get(r["status"], "⚪")
-        st.metric(f"{icon} {r['inds_scls_nm']}", f"{int(r['dong_cnt'])}곳",
-                  help="LQ = 이 동네에서 그 업종이 차지하는 비중 ÷ 시 전체 비중. 1보다 작으면 시 평균보다 적음.")
-        st.caption(f"{r['status']} · LQ {r['lq']:.2f}")
+ui.stat_tiles([
+    (f"{ {'부족': '🟢', '포화': '🔴'}.get(r['status'], '⚪') } {r['inds_scls_nm']}", f"{int(r['dong_cnt'])}곳",
+     f"{r['status']} · LQ {r['lq']:.2f}")
+    for _, r in mine.sort_values("lq").iterrows()
+])
+st.caption("LQ = 이 동네에서 그 업종이 차지하는 비중 ÷ 시 전체 비중. 1보다 작으면 시 평균보다 적음.")
 
 fmt = {
     "inds_lcls_nm": "대분류", "inds_scls_nm": "업종", "dong_cnt": "이 동네", "city_cnt": "시 전체",
