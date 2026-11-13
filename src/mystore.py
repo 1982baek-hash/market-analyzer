@@ -214,13 +214,10 @@ def dong_of_point(data: dict, lat: float, lon: float) -> tuple[str, str] | None:
 
 
 def sbiz_sales(region_key: str, dong_nm: str, scls_nm: str) -> float | None:
-    """config/sbiz_floating.yaml 의 sales: 동네·업종별 점포당 월평균 매출(만원, 소상공인365)."""
-    if not scoring.SBIZ_FLOATING_YAML.exists():
-        return None
-    with open(scoring.SBIZ_FLOATING_YAML, encoding="utf-8") as f:
-        y = yaml.safe_load(f) or {}
-    v = ((y.get("sales") or {}).get(region_key) or {}).get(dong_nm, {}) or {}
-    return v.get(scls_nm)
+    """동네·업종별 점포당 월평균 매출(만원, 소상공인365에서 옮겨 적은 최근 달)."""
+    from src import sbiz
+    v = sbiz.latest_sales(region_key, dong_nm, scls_nm)
+    return v[0] if v else None
 
 
 def diagnose(table: pd.DataFrame, dong_cd: str, sales: float, rent: float, deposit: float, area_pyeong: float,
