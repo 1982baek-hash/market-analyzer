@@ -20,6 +20,7 @@ if t.empty:
     st.stop()
 
 # ---------------- 업종 검색
+found: list[str] = []
 q = st.text_input("🔎 업종 검색", key="cat_q", placeholder="예: 김밥, 만두, 커피, 안경 (쉼표로 여러 개)")
 if q.strip():
     stores = data["stores"]
@@ -66,15 +67,36 @@ if q.strip():
 if t["opportunity"].isna().all():
     st.warning(f"{dong_nm}은(는) 점포가 30개 미만이라 업종별 비교가 흔들립니다. 아래 숫자는 참고만 해 주세요.")
 
-# ---------------- 형님 매장 업종 먼저
-cfg = scoring.load_config()["presets"]["coffee_snack"]
-mine = t[t["inds_scls_cd"].isin(cfg["groups"]["cafe"]["scls"] + cfg["groups"]["snack"]["scls"])]
-st.subheader(f"{dong_nm} · 커피·간식 업종 상태")
-ui.stat_tiles([
-    (f"{ {'부족': '🟢', '포화': '🔴'}.get(r['status'], '⚪') } {r['inds_scls_nm']}", f"{int(r['dong_cnt'])}곳",
-     f"{r['status']} · LQ {r['lq']:.2f}")
-    for _, r in mine.sort_values("lq").iterrows()
-])
+# ---------------- 업종 상태: 검색했으면 그 업종과 같은 중분류, 아니면 형님 매장(커피·간식)
+if found:
+    mc = data["stores"].drop_duplicates("inds_scls_cd").set_index("inds_scls_cd")["inds_mcls_nm"]
+    groups = list(dict.fromkeys(mc.get(c) for c in found if c in mc.index))
+    sib = [c for c in mc.index[mc.isin(groups)] if c in set(t["inds_scls_cd"])]
+    focus = list(dict.fromkeys(found + sib))
+    title = f"{dong_nm} · '{q.strip()}' 관련 업종 상태"
+    note = "검색한 업종과 같은 묶음(" + ", ".join(groups) + ")의 업종까지 함께 보여 줍니다."
+else:
+    cfg = scoring.load_config()["presets"]["coffee_snack"]
+    focus = cfg["groups"]["cafe"]["scls"] + cfg["groups"]["snack"]["scls"]
+    title, note = f"{dong_nm} · 커피·간식 업종 상태", ""
+mine = t[t["inds_scls_cd"].isin(focus)].copy()
+mine["searched"] = mine["inds_scls_cd"].isin(found)
+st.subheader(title)
+tiles = [
+    (f"{ {'부족': '🟢', '포화': '🔴'}.get(r['status'], '⚪') } {r['inds_scls_nm']}" + (" 🔎" if r["searched"] else ""),
+     f"{int(r['dong_cnt'])}곳", f"{r['status']} · LQ {r['lq']:.2f} · 시 {int(r['city_cnt'])}곳")
+    for _, r in mine.sort_values(["searched", "lq"], ascending=[False, True]).iterrows()
+]
+if found:
+    here_cnt = data["stores"].loc[scoring.attach_dong_key(data["stores"], scoring.dong_master(data)) == dong_cd,
+                                  "inds_scls_cd"].value_counts()
+    nm = data["stores"].drop_duplicates("inds_scls_cd").set_index("inds_scls_cd")["inds_scls_nm"]
+    tiles += [(f"⚪ {nm[c]} 🔎", f"{int(here_cnt.get(c, 0))}곳", "시 전체 가게가 적어 비교 생략")
+              for c in found if c not in set(t["inds_scls_cd"]) and c in nm.index]
+if tiles:
+    ui.stat_tiles(tiles)
+if note:
+    st.caption(note + " 🔎 = 검색한 업종")
 st.caption("LQ = 이 동네에서 그 업종이 차지하는 비중 ÷ 시 전체 비중. 1보다 작으면 시 평균보다 적음.")
 
 fmt = {
