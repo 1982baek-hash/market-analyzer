@@ -90,6 +90,72 @@ tiles += [
 ]
 ui.stat_tiles(tiles)
 
+# ---------------------------------------------------------------- 2-1. 우리 가게 진단
+st.divider()
+st.subheader("🩺 지금 자리, 유지할까 옮길까?")
+st.caption("운영 중인 가게 숫자를 넣으면 이 자리(동네)가 지금 업종에 맞는지 판단합니다. "
+           "넣은 숫자는 어디에도 저장되지 않습니다 (계속 쓰려면 맨 아래 '비공개 저장' 참고).")
+dong = mystore.dong_of_point(data, lat, lon)
+stores_df = data["stores"]
+scls_names = stores_df.groupby("inds_scls_cd")["inds_scls_nm"].first()
+codes = [c for c in stores_df["inds_scls_cd"].value_counts().index if c in scls_names.index]
+default_scls = str(place.get("scls", "I21201"))
+avg_default = mystore.sbiz_sales(region, dong[1], scls_names.get(default_scls, "")) if dong else None
+
+with st.form("diag"):
+    f1, f2 = st.columns(2)
+    scls = f1.selectbox("지금 업종", codes, index=codes.index(default_scls) if default_scls in codes else 0,
+                        format_func=lambda c: scls_names[c])
+    sales = f2.number_input("월 매출 (만원)", min_value=0, step=50, value=int(place.get("monthly_sales", 0)))
+    f3, f4, f5 = st.columns(3)
+    rent = f3.number_input("월세+관리비 (만원)", min_value=0, step=10, value=int(place.get("monthly_rent", 0)))
+    deposit = f4.number_input("보증금 (만원)", min_value=0, step=500, value=int(place.get("deposit", 0)))
+    area = f5.number_input("면적 (평)", min_value=0.0, step=1.0, value=float(place.get("area_pyeong", 0)))
+    avg_sales = st.number_input("동네 같은 업종 평균 월매출 (만원 · 모르면 0)", min_value=0, step=50,
+                                value=int(place.get("area_avg_sales") or avg_default or 0),
+                                help="소상공인365(bigdata.sbiz.or.kr) › 빅데이터 상권분석에서 이 동네·업종을 고르면 나옵니다.")
+    if st.form_submit_button("진단하기", type="primary", use_container_width=True):
+        st.session_state["diag_on"] = True
+
+if (st.session_state.get("diag_on") or place.get("monthly_sales")) and dong:
+    if not sales:
+        st.warning("월 매출을 넣어 주세요.")
+    else:
+        dong_cd, dong_nm = dong
+        groups_cfg = mystore.group_scls(cfg)
+        grp = next((g for g, lst in groups_cfg.items() if scls in lst), None)
+        if grp:  # 카페·간식은 형님 매장용 점수(커피+간식)로
+            table, _ = ui.preset_scores(region)
+        else:
+            table, _ = ui.category_scores(region, scls, "생활밀착형")
+        comp = None
+        if grp:
+            lg = mystore.licenses_near(data, lat, lon, radius, (grp,))
+            tg = mystore.monthly_counts(lg, months=60) if not lg.empty else pd.DataFrame()
+            if not tg.empty:
+                comp = (int(tg["count"].iloc[0]), int(tg["count"].iloc[-1]))
+        res = mystore.diagnose(table, dong_cd, sales, rent, deposit, area, avg_sales or None, comp)
+        box = {"good": st.success, "mid": st.info, "bad": st.warning}[res["tone"]]
+        box(f"### {res['verdict']}\n{dong_nm} · {scls_names[scls]} 기준 — {res['why']}")
+        st.markdown("\n".join(f"- {icon} {text}" for icon, text in res["factors"]))
+        alts = res["alternatives"]
+        if not len(alts):
+            st.caption("시 안에서 이 동네보다 같은 업종 점수가 높은 동네는 없습니다.")
+        else:
+            cur = table.loc[table["adong_cd"] == dong_cd, "score"]
+            cur = cur.iloc[0] if len(cur) else float("nan")
+            st.markdown("**옮긴다면 — 지금 동네보다 같은 업종 점수가 높은 동네**")
+            ui.stat_tiles([
+                (f"{int(r['rank'])}위 {r['adong_nm']}", f"{r['score']:.0f}점",
+                 (f"지금보다 {r['score'] - cur:+.0f}점" if pd.notna(cur) else "") +
+                 (" · " + ui.rent_line(r).split("→")[0].replace("💰 ", "") if ui.rent_line(r) else ""))
+                for _, r in alts.iterrows()
+            ])
+        st.caption(f"보증금 {deposit:,}만원은 옮길 때 돌려받는 돈입니다. 권리금·인테리어·이사 비용, 단골이 다시 모이는 기간, "
+                   "남은 계약 기간은 반영하지 않았으니 참고용으로만 봐 주세요.")
+elif not dong:
+    st.info("이 위치의 동네를 찾지 못해 진단할 수 없습니다.")
+
 # ---------------------------------------------------------------- 3. 지도
 colors = {"cafe": "#8B5A2B", "snack": "#E4572E"}
 pts = [{"lat": lat, "lon": lon, "color": "#1f6feb", "size": 20, "tooltip": f"📍 {place['name']}", "label": "여기"}]
@@ -192,12 +258,21 @@ if ctx["schools"]:
 
 # ---------------------------------------------------------------- 7. 위치 저장
 st.divider()
-with st.expander("📌 이 위치를 목록에 넣는 법"):
+with st.expander("📌 이 위치·가게 숫자를 계속 쓰는 법 (비공개 저장)"):
     if st.button("이번 접속 동안 '저장된 위치'에 추가"):
         st.session_state["my_session_places"].append(
             {"name": place["name"], "region": region, "lat": lat, "lon": lon, "radius": radius, "group": gsel})
-        st.success("추가했습니다. 앱을 다시 열면 사라지니, 계속 쓸 곳은 아래 줄을 설정 파일에 넣어 주세요.")
-    st.markdown("계속 쓸 곳은 GitHub 저장소의 `config/my_stores.yaml` 파일 `stores:` 아래에 이 내용을 붙여 넣으세요.")
-    st.code(f'  - name: "{place["name"]}"\n    region: {region}\n    lat: {lat:.6f}\n    lon: {lon:.6f}\n'
-            f"    radius: {radius}\n    group: {gsel}", language="yaml")
-    st.caption("⚠️ 저장소가 공개 상태라면 실제 매장 위치를 넣기 전에 비공개로 바꿔 주세요.")
+        st.success("추가했습니다. 앱을 다시 열면 사라지니, 계속 쓸 곳은 아래 방법으로 저장해 주세요.")
+    st.markdown(
+        "저장소는 공개 상태라 실제 가게 정보는 **Streamlit Secrets**(나만 보는 설정)에 넣습니다.\n\n"
+        "1. 앱 오른쪽 아래 **Manage app** → 오른쪽 위 **⋮** → **Settings** → **Secrets**\n"
+        "2. 이미 있는 줄은 그대로 두고, 맨 아래에 아래 내용을 붙여 넣은 뒤 **Save changes**\n"
+        "3. 1분쯤 뒤 이 화면의 **저장된 위치**에 나오고, 가게 숫자가 미리 채워져 진단이 바로 보입니다.")
+    ss = st.session_state
+    toml = (f'\n[[my_stores]]\nname = "{place["name"]}"\nregion = "{region}"\nlat = {lat:.6f}\nlon = {lon:.6f}\n'
+            f'radius = {radius}\ngroup = "{gsel}"\nscls = "{scls}"            # 업종 ({scls_names[scls]})\n'
+            f"monthly_sales = {int(sales)}      # 월 매출(만원)\nmonthly_rent = {int(rent)}       # 월세+관리비(만원)\n"
+            f"deposit = {int(deposit)}           # 보증금(만원)\narea_pyeong = {area:g}      # 면적(평)\n"
+            f"area_avg_sales = {int(avg_sales)}   # 동네 같은 업종 평균 월매출(만원)\n")
+    st.code(toml, language="toml")
+    st.caption("가게가 여러 곳이면 [[my_stores]] 묶음을 여러 번 붙이면 됩니다. Secrets는 GitHub에 올라가지 않습니다.")
