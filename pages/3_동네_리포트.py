@@ -54,6 +54,9 @@ if row is not None:
     rl = ui.rent_line(row)
     st.caption(rl if rl else "💰 임대료: 한국부동산원 조사 상권이 아니라 제공되지 않음 · 주변 매물 시세로 확인해 주세요")
 
+# ---------------- 상권 주변 뉴스
+ui.news_section(region, dong_nm)
+
 # ---------------- 소상공인365로 본 이 동네 (유동인구 구성·매출 추이·해설)
 sd, sc = sbiz.detail(region, dong_nm), sbiz.city_detail(region)
 cafe_sales = sbiz.sales_series(region, dong_nm, "카페")

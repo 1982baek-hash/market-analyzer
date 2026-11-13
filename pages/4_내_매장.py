@@ -1,5 +1,6 @@
 """내 매장 — 우리 가게(또는 후보지) 주변 경쟁점이 어떻게 변했나?"""
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -176,6 +177,18 @@ if not navermap.render(pts, height=440, circle={"lat": lat, "lon": lon, "radius"
     st_folium(fmap, height=440, use_container_width=True, returned_objects=[])
 legend = " · ".join(f"<span style='color:{colors[g]}'>●</span> {mystore.GROUP_LABEL[g]}" for g in groups)
 st.markdown(f"<span style='color:#1f6feb'>●</span> 우리 위치 · {legend}", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------- 3-1. 주변 뉴스
+if dong:
+    _s = data["stores"].dropna(subset=["lat", "lon"])
+    _near_ld = _s.iloc[int(np.argmin(mystore.distance_m(lat, lon, _s["lat"], _s["lon"])))].get("ldong_nm")
+    extra = [_near_ld] if isinstance(_near_ld, str) and _near_ld and _near_ld != dong[1] else []
+    sl = ctx.get("school_list")
+    if sl is not None and len(sl) and "campus" in sl:
+        for nm in sl.loc[sl["campus"].notna(), "name"]:
+            extra.append(nm.split()[0].replace("국립", "").replace("대학교", "대"))
+    st.divider()
+    ui.news_section(region, dong[1], extra[:2], title=f"📰 {dong[1]} 주변 주요 뉴스")
 
 # ---------------------------------------------------------------- 4. 경쟁점 수 추이
 st.divider()
