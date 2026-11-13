@@ -150,3 +150,19 @@ def rent_line(r) -> str:
         return ""
     return (f"💰 {kind} 상가 임대료 ㎡당 월 {val:.1f}천원 → 10평(33㎡) 약 {val * 33 / 10:.0f}만원 "
             f"({r['rent_district']} 상권 평균, {r.get('rent_period', '')})")
+
+
+def stat_tiles(tiles: list[tuple]) -> None:
+    """숫자 카드 묶음 [(제목, 값, 작은 설명)] — 휴대폰에서는 2칸, 넓은 화면에서는 한 줄.
+    (st.metric을 st.columns에 넣으면 휴대폰에서 한 줄에 하나씩 쌓여 화면이 길어짐)"""
+    import html as _h
+    cells = "".join(
+        f"<div class='mt'><div class='ml'>{_h.escape(str(a))}</div><div class='mv'>{_h.escape(str(b))}</div>"
+        f"<div class='mn'>{_h.escape(str(c or ''))}</div></div>"
+        for a, b, *rest in tiles for c in [rest[0] if rest else ""])
+    st.markdown(
+        "<style>.mtg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:4px 0 12px}"
+        ".mt{border:1px solid rgba(128,128,128,.25);border-radius:10px;padding:10px 12px}"
+        ".ml{font-size:.85rem;opacity:.75}.mv{font-size:1.6rem;font-weight:700;line-height:1.3}"
+        ".mn{font-size:.72rem;opacity:.6;min-height:1em}</style>"
+        f"<div class='mtg'>{cells}</div>", unsafe_allow_html=True)

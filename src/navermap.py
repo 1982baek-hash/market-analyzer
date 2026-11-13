@@ -29,8 +29,9 @@ def client_id() -> str:
     return get_api_key("NAVER_MAP_CLIENT_ID")
 
 
-def render(points: list[dict], height: int = 420, zoom: int | None = None) -> bool:
+def render(points: list[dict], height: int = 420, zoom: int | None = None, circle: dict | None = None) -> bool:
     """points: [{lat, lon, color, size, tooltip, label}] — label이 있으면 점 옆에 글자를 붙입니다.
+    circle: {lat, lon, radius(m)} — 반경 원을 그리고 지도 범위를 원에 맞춥니다.
 
     네이버 지도 키가 없으면 False를 돌려줍니다 (그리기 안 함).
     """
@@ -39,6 +40,13 @@ def render(points: list[dict], height: int = 420, zoom: int | None = None) -> bo
         return False
     lats = [p["lat"] for p in points]
     lons = [p["lon"] for p in points]
+    if circle:
+        import math
+        dlat = circle["radius"] / 111_320
+        dlon = circle["radius"] / (111_320 * math.cos(math.radians(circle["lat"])))
+        lats = [circle["lat"] - dlat, circle["lat"] + dlat]
+        lons = [circle["lon"] - dlon, circle["lon"] + dlon]
+    circle_js = json.dumps(circle and {k: float(circle[k]) for k in ("lat", "lon", "radius")})
     data = json.dumps([
         {"lat": float(p["lat"]), "lon": float(p["lon"]), "color": p.get("color", "#3366cc"),
          "size": int(p.get("size", 14)), "tip": html.escape(str(p.get("tooltip", ""))),
@@ -64,14 +72,19 @@ window.navermap_authFailure = function () {{
 function draw() {{
   const pts = {data};
   const b = {bounds};
+  const circ = {circle_js};
   const map = new naver.maps.Map('map', {{
     center: new naver.maps.LatLng((b[0] + b[2]) / 2, (b[1] + b[3]) / 2),
     zoom: {zoom_js} || 12, scaleControl: true, mapDataControl: false,
     zoomControl: true, zoomControlOptions: {{ position: naver.maps.Position.TOP_RIGHT, style: naver.maps.ZoomControlStyle.SMALL }}
   }});
-  if ({zoom_js} === null && pts.length > 1) {{
+  if ({zoom_js} === null && (pts.length > 1 || circ)) {{
     map.fitBounds(new naver.maps.LatLngBounds(new naver.maps.LatLng(b[0], b[1]), new naver.maps.LatLng(b[2], b[3])),
                   {{ top: 30, right: 30, bottom: 30, left: 30 }});
+  }}
+  if (circ) {{
+    new naver.maps.Circle({{ map: map, center: new naver.maps.LatLng(circ.lat, circ.lon), radius: circ.radius,
+      strokeColor: '#1f6feb', strokeWeight: 2, strokeOpacity: .8, fillColor: '#1f6feb', fillOpacity: .06 }});
   }}
   const tip = new naver.maps.InfoWindow({{ content: '', borderWidth: 0, backgroundColor: 'transparent',
                                          disableAnchor: true, pixelOffset: new naver.maps.Point(0, -6) }});
