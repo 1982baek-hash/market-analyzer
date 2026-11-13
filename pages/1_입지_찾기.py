@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from src import catprof, sbiz, scoring, ui
+from src import catprof, mystore, pickmap, sbiz, scoring, spot, ui
 
 st.set_page_config(page_title="입지 찾기", page_icon="🎯", layout="wide")
 ui.require_login()
@@ -11,27 +11,150 @@ st.caption("이 업종, 어느 동네가 좋을까? 같은 시·군 안 동네�
 
 region = ui.pick_region()
 regions = scoring.load_regions()
+data = ui.region_data(region)
 
-mode = st.sidebar.radio("업종", ["형님 매장 (커피 + 간식)", "다른 업종"], key="loc_mode")
+# ---------------- ① 동네 → ② 업종
+st.markdown("##### ① 동네")
+dong_cd, dong_nm = ui.pick_dong(data, key="loc_dong", main=True)
+st.markdown("##### ② 업종")
+MODES = ["형님 매장 (커피 + 간식)", "다른 업종"]
+if st.session_state.get("loc_mode") not in MODES:
+    st.session_state["loc_mode"] = MODES[0]
+mode = st.radio("업종", MODES, key="loc_mode", horizontal=True, label_visibility="collapsed")
 if mode == "다른 업종":
-    data = ui.region_data(region)
     cats = (data["stores"].groupby(["inds_lcls_nm", "inds_scls_cd", "inds_scls_nm"]).size()
             .rename("n").reset_index().query("n >= 10").sort_values(["inds_lcls_nm", "inds_scls_nm"]))
     labels = dict(zip(cats["inds_scls_cd"], cats["inds_lcls_nm"] + " › " + cats["inds_scls_nm"]))
     codes = list(labels)
-    default = codes.index("I21201") if "I21201" in codes else 0
-    scls = st.selectbox("🔍 업종 검색 (이름을 입력하세요 · 예: 치킨, 빵, 미용실)", codes, index=default,
+    if st.session_state.get("loc_scls") not in codes:
+        st.session_state["loc_scls"] = "I21201" if "I21201" in codes else codes[0]
+    c1, c2 = st.columns([3, 2])
+    scls = c1.selectbox("🔍 업종 검색 (이름을 입력하세요 · 예: 치킨, 빵, 미용실)", codes,
                         format_func=lambda c: labels[c], key="loc_scls")
-    dtype = st.sidebar.radio("손님이 주로 오는 곳", list(scoring.load_config()["demand_types"]),
-                             help="생활밀착형: 동네 주민 · 오피스형: 직장인 · 방문·관광형: 외부 방문객")
+    dtype = c2.radio("손님이 주로 오는 곳", list(scoring.load_config()["demand_types"]), horizontal=True,
+                     help="생활밀착형: 동네 주민 · 오피스형: 직장인 · 방문·관광형: 외부 방문객")
     table, info = ui.category_scores(region, scls, dtype)
     comp_cols = {"comp_cnt": "동종 점포"}
+    spot_codes = {cats.set_index("inds_scls_cd").at[scls, "inds_scls_nm"]: [scls]}
 else:
     table, info = ui.preset_scores(region)
-    data = None
     comp_cols = {"cafe_cnt": "카페", "snack_cnt": "간식점"}
+    _pc = scoring.load_config()["presets"]["coffee_snack"]["groups"]
+    spot_codes = {g["name"]: [str(c) for c in g["scls"]] for g in _pc.values()}
 
 ui.period_badges(info["periods"])
+
+# ---------------- 고른 동네의 점수
+_sel = table[table["adong_cd"] == dong_cd]
+if len(_sel):
+    r0 = _sel.iloc[0]
+    n_rank = int(table["score"].notna().sum())
+    with st.container(border=True):
+        st.markdown(f"**📍 {dong_nm}** · {info['preset']} 입지 점수 "
+                    + ("**판단 보류** (" + str(r0["hold_reason"]) + ")" if pd.isna(r0["score"])
+                       else f"**{r0['score']:.0f}점** — 점수를 매긴 {n_rank}개 동네 중 **{int(r0['rank'])}위**"))
+        if r0["reasons"]:
+            st.markdown("  \n".join(r0["reasons"]))
+
+# ---------------- 점수 지도 (꾹 눌러 자리 고르기)
+st.subheader("🗺️ 점수 지도 — 매장 열고 싶은 곳을 꾹 누르세요")
+st.caption("동네 점은 초록일수록 좋음 · 회색은 판단 보류 · 휴대폰은 **길게 누르기**, PC는 **마우스를 꾹 누르거나 오른쪽 클릭**하면 그 자리 주변 상권을 보여 줘요.")
+cent = scoring.dong_centroids(data)
+tmap = table.set_index("adong_cd").join(cent, how="inner")
+pts = []
+for cd, r in tmap.iterrows():
+    sc = r.get("score")
+    top = pd.notna(r.get("rank")) and r["rank"] <= 3
+    pts.append({"lat": float(r["lat"]), "lon": float(r["lon"]), "color": ui.score_color(sc),
+                "size": 18 if pd.notna(sc) else 11, "ring": cd == dong_cd,
+                "tip": f"{r['adong_nm']} · " + ("판단 보류" if pd.isna(sc) else f"{sc:.0f}점 ({int(r['rank'])}위)"),
+                "label": (f"{int(r['rank'])}위 {r['adong_nm']}" if top else (r["adong_nm"] if cd == dong_cd else ""))})
+center = (tmap.at[dong_cd, "lat"], tmap.at[dong_cd, "lon"]) if dong_cd in tmap.index else (tmap["lat"].mean(), tmap["lon"].mean())
+
+pick_key = f"loc_pick_{region}"
+radius = st.radio("고른 자리 반경", mystore.RADII, index=mystore.RADII.index(500) if 500 in mystore.RADII else 0,
+                  format_func=lambda v: f"{v:,}m", horizontal=True, key="loc_radius")
+pick = st.session_state.get(pick_key)
+comps_pts = []
+if pick:
+    _a = spot.analyze(region, data, pick["lat"], pick["lon"], radius, spot_codes, table)
+    palette = ["#e45756", "#f58518", "#4c78a8", "#54a24b"]
+    gcol = {g: palette[i % 4] for i, g in enumerate(spot_codes)}
+    for _, c in _a["comp"].iterrows():
+        comps_pts.append({"lat": float(c["lat"]), "lon": float(c["lon"]), "color": gcol.get(c["group"], "#e45756"),
+                          "tip": f"{c['store_name']} · {c['inds_scls_nm']} · {c['dist']:.0f}m"})
+if pickmap.available():
+    v = pickmap.pick_map(pts, center, zoom=14, pick=pick, radius=radius, comps=comps_pts, height=480,
+                         key=f"pickmap_{region}")
+    if v and v.get("t") != (pick or {}).get("t"):
+        st.session_state[pick_key] = {"lat": float(v["lat"]), "lon": float(v["lon"]), "t": v.get("t"),
+                                      "address": v.get("address")}
+        st.rerun()
+else:
+    import folium
+    from streamlit_folium import st_folium
+    fmap = folium.Map(location=list(center), zoom_start=14)
+    for p_ in pts:
+        folium.CircleMarker([p_["lat"], p_["lon"]], radius=p_["size"] / 2, color=p_["color"], fill=True,
+                            fill_color=p_["color"], fill_opacity=.85, weight=3 if p_["ring"] else 1, tooltip=p_["tip"]).add_to(fmap)
+    if pick:
+        folium.Circle([pick["lat"], pick["lon"]], radius=radius, color="#1f6feb", fill=True, fill_opacity=.07).add_to(fmap)
+        folium.Marker([pick["lat"], pick["lon"]]).add_to(fmap)
+        for c in comps_pts:
+            folium.CircleMarker([c["lat"], c["lon"]], radius=4, color=c["color"], fill=True, tooltip=c["tip"]).add_to(fmap)
+    out = st_folium(fmap, height=480, use_container_width=True, returned_objects=["last_clicked"], key=f"fol_{region}")
+    lc = (out or {}).get("last_clicked")
+    if lc and (not pick or abs(lc["lat"] - pick["lat"]) > 1e-7 or abs(lc["lng"] - pick["lon"]) > 1e-7):
+        st.session_state[pick_key] = {"lat": float(lc["lat"]), "lon": float(lc["lng"]), "t": None}
+        st.rerun()
+
+# ---------------- 고른 자리 주변 상권
+if pick:
+    a = _a
+    dnm = a["dong"][1] if a["dong"] else "?"
+    addr = pick.get("address")
+    if not addr and not a["near_all"].empty:  # 지도에서 주소를 못 받으면 가장 가까운 가게 주소로
+        nb = a["near_all"].sort_values("dist").iloc[0]
+        addr = f"{nb['rdnm_adr']} 근처" if isinstance(nb.get("rdnm_adr"), str) else None
+    st.markdown(f"#### 📍 {addr or '고른 자리'} — 주변 상권")
+    st.caption(f"{dnm} · 반경 {radius:,}m · 업종: {', '.join(spot_codes)} (위 ② 업종에서 바꿀 수 있어요)")
+    tiles = []
+    if a["row"] is not None:
+        rr = a["row"]
+        tiles.append((f"{dnm} 입지 점수", "판단 보류" if pd.isna(rr["score"]) else f"{rr['score']:.0f}점",
+                      "" if pd.isna(rr["score"]) else f"점수 매긴 {a['n_ranked']}개 중 {int(rr['rank'])}위"))
+    comp = a["comp"]
+    for g in spot_codes:
+        n = int((comp["group"] == g).sum()) if not comp.empty else 0
+        low = int(comp.loc[comp["group"] == g, "lowcost"].sum()) if not comp.empty and "lowcost" in comp else 0
+        tiles.append((f"반경 안 {g}", f"{n}곳", f"저가 커피 {low}곳" if low else ""))
+    tiles += [("반경 안 전체 가게", f"{len(a['near_all'])}곳", "상가정보"),
+              ("버스정류장 · 학교", f"{a['ctx']['bus']} · {a['ctx']['schools']}곳", "대학 포함")]
+    if a["opened"] is not None:
+        tiles.append(("최근 1년 새로 연 · 닫은 곳", f"{len(a['opened'])} · {len(a['closed'])}곳", "같은 업종 인허가"))
+    ui.stat_tiles(tiles)
+    st.markdown("\n".join(f"- {t}" for t in spot.lines(a, spot_codes, radius)))
+    if a["row"] is not None:
+        rl = ui.rent_line(a["row"])
+        if rl:
+            st.caption(rl)
+    if not comp.empty:
+        with st.expander(f"반경 안 같은 업종 가게 {len(comp)}곳 보기"):
+            st.dataframe(comp.sort_values("dist").assign(거리=lambda d: d["dist"].round(-1).astype(int).astype(str) + "m")[
+                ["store_name", "inds_scls_nm", "거리", "rdnm_adr"]].rename(
+                columns={"store_name": "상호", "inds_scls_nm": "업종", "rdnm_adr": "주소"}),
+                hide_index=True, use_container_width=True)
+    b1, b2 = st.columns(2)
+    if b1.button("📌 이 자리를 '내 매장'에서 자세히 보기", use_container_width=True,
+                 help="경쟁점 5년 추이, 새로 생긴·문 닫은 가게, 자리 진단을 볼 수 있어요"):
+        places = st.session_state.setdefault("my_session_places", [])
+        places.append({"region": region, "name": f"지도에서 고른 자리 ({dnm})", "lat": pick["lat"], "lon": pick["lon"],
+                       "radius": radius, "group": "both", **({"scls": next(iter(spot_codes.values()))[0]} if mode == "다른 업종" else {})})
+        st.session_state["my_place_pick_last"] = True
+        st.switch_page("pages/4_내_매장.py")
+    if b2.button("✖ 고른 자리 지우기", use_container_width=True):
+        st.session_state.pop(pick_key, None)
+        st.rerun()
 
 # ---------------- 업종 요약 카드
 others = {rk: ui.region_data(rk) for rk in regions}
@@ -72,13 +195,9 @@ for i, (_, r) in enumerate(ranked.head(3).iterrows()):
             rl = ui.rent_line(r)
             st.caption(rl if rl else "💰 임대료: 부동산원 조사 상권이 아니라 제공되지 않음")
 
-# ---------------- 지도 + 순위표
-left, right = st.columns([5, 6])
-with left:
-    st.markdown("**점수 지도** · 초록일수록 좋음, 회색은 판단 보류")
-    ui.dong_score_map(data or ui.region_data(region), table)
-with right:
-    st.markdown("**동네 순위표**")
+# ---------------- 순위표
+st.markdown("**동네 순위표**")
+if True:
     def txt(series, fmt="{:,.0f}"):
         """빈 값은 None 대신 '–'로 보여 주기 위해 글자로 바꿉니다."""
         return series.map(lambda v: "–" if pd.isna(v) else fmt.format(v))

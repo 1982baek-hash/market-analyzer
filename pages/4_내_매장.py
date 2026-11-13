@@ -35,7 +35,11 @@ if mode == "저장된 위치":
         st.info("저장된 위치가 없습니다. **주소·가게 이름으로 찾기**로 위치를 정해 주세요. "
                 "(자주 볼 곳은 `config/my_stores.yaml`에 넣어 두면 여기에 나옵니다)")
     else:
-        i = st.selectbox("위치", range(len(options)),
+        if st.session_state.pop("my_place_pick_last", False):
+            st.session_state["my_place_i"] = len(options) - 1
+        if st.session_state.get("my_place_i", 0) >= len(options):
+            st.session_state["my_place_i"] = 0
+        i = st.selectbox("위치", range(len(options)), key="my_place_i",
                          format_func=lambda k: f"{options[k]['name']}" + (" (이번 접속에서만)" if options[k]["src"] == "이번 접속" else ""))
         place = options[i]
 else:
