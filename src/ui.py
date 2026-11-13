@@ -265,4 +265,5 @@ def news_section(region_key: str, dong_nm: str, extra: list[str] | None = None, 
     errs = e1 + e2
     st.caption("Google 뉴스" + (" · 네이버 뉴스" if all(keys) else "") + " 검색 결과에서 장사와 관련된 기사만 골라 분류했어요 "
                "(동 행정 소식·사건사고 제외 · 6시간마다 새로 찾음)."
-               + (" ⚠️ 일부 뉴스를 불러오지 못했어요." if errs else ""))
+               + (" ⚠️ 일부 뉴스를 불러오지 못했어요." if errs else ""),
+               help=("불러오지 못한 곳: " + " / ".join(dict.fromkeys(errs))) if errs else None)

@@ -99,12 +99,12 @@ def collect(queries: list[str], must: list[str] | None = None, days: int = 90,
         try:
             items += google(q, days)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"Google 뉴스 '{q}': {type(e).__name__}")
+            errors.append(f"Google 뉴스 '{q}': {type(e).__name__} {getattr(getattr(e, 'response', None), 'status_code', '')}")
         if naver_keys and all(naver_keys):
             try:
                 items += naver(q, *naver_keys)
             except Exception as e:  # noqa: BLE001
-                errors.append(f"네이버 뉴스 '{q}': {type(e).__name__}")
+                errors.append(f"네이버 뉴스 '{q}': {type(e).__name__} {getattr(getattr(e, 'response', None), 'status_code', '')}")
     since = datetime.now(KST) - timedelta(days=days)
     seen, out = set(), []
     for it in sorted(items, key=lambda x: x["date"] or datetime.min.replace(tzinfo=KST), reverse=True):
