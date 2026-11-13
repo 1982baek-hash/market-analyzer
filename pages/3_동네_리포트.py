@@ -11,9 +11,8 @@ ui.require_login()
 
 region = ui.pick_region()
 data = ui.region_data(region)
-dong_cd, dong_nm = ui.pick_dong(data)
-
-st.title(f"🏘️ {dong_nm} 동네 리포트")
+st.title("🏘️ 동네 리포트")
+dong_cd, dong_nm = ui.pick_dong(data, main=True)
 ui.period_badges(data["periods"])
 
 table, _ = ui.preset_scores(region)
@@ -21,7 +20,23 @@ row = table.set_index("adong_cd").loc[dong_cd] if dong_cd in set(table["adong_cd
 cfg = scoring.load_config()
 pc = cfg["presets"]["coffee_snack"]
 
-# ---------------- 한눈에
+# ---------------- 이 동네 장사 성격 (요약 카드)
+prof = sbiz.profile(region, dong_nm)
+if prof:
+    ui.summary_card(f"{dong_nm} · 카페 장사 성격 (소상공인365 {prof['period']} 기준)", prof)
+elif row is not None:
+    lines = []
+    if pd.notna(row.get("target_share")):
+        lines.append(f"10–29세 주민 {row['target_share'] * 100:.0f}%")
+    if pd.notna(row.get("lic_closure3")):
+        lines.append(f"카페·간식 3년 내 폐업률 {row['lic_closure3'] * 100:.0f}%")
+    ui.summary_card(f"{dong_nm} · 한눈에 보기", {
+        "headline": "판단 보류" if pd.isna(row["score"]) else f"커피+간식 입지 점수 {row['score']:.0f}점",
+        "tags": lines + [f"카페 {int(row['cafe_cnt'])}곳", f"간식점 {int(row['snack_cnt'])}곳"],
+        "facts": [], "tips": [],
+        "warns": ["이 동네는 소상공인365 매출·유동인구 자료를 아직 받지 않았어요. '자료 업데이트 해줘'라고 하면 추가할게요."]})
+
+st.markdown("#### 숫자로 보기")
 if row is not None:
     ui.stat_tiles([
         ("커피+간식 입지 점수", "판단 보류" if pd.isna(row["score"]) else f"{row['score']:.0f}점",

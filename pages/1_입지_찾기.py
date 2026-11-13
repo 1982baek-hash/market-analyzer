@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from src import sbiz, scoring, ui
+from src import catprof, sbiz, scoring, ui
 
 st.set_page_config(page_title="입지 찾기", page_icon="🎯", layout="wide")
 ui.require_login()
@@ -20,7 +20,8 @@ if mode == "다른 업종":
     labels = dict(zip(cats["inds_scls_cd"], cats["inds_lcls_nm"] + " › " + cats["inds_scls_nm"]))
     codes = list(labels)
     default = codes.index("I21201") if "I21201" in codes else 0
-    scls = st.sidebar.selectbox("업종 검색 (소분류)", codes, index=default, format_func=lambda c: labels[c])
+    scls = st.selectbox("🔍 업종 검색 (이름을 입력하세요 · 예: 치킨, 빵, 미용실)", codes, index=default,
+                        format_func=lambda c: labels[c], key="loc_scls")
     dtype = st.sidebar.radio("손님이 주로 오는 곳", list(scoring.load_config()["demand_types"]),
                              help="생활밀착형: 동네 주민 · 오피스형: 직장인 · 방문·관광형: 외부 방문객")
     table, info = ui.category_scores(region, scls, dtype)
@@ -31,6 +32,23 @@ else:
     comp_cols = {"cafe_cnt": "카페", "snack_cnt": "간식점"}
 
 ui.period_badges(info["periods"])
+
+# ---------------- 업종 요약 카드
+others = {rk: ui.region_data(rk) for rk in regions}
+city_nm = regions[region]["name"].split()[-1]
+if mode == "다른 업종":
+    cp = catprof.profile(region, [scls], info["preset"], table, others, "comp_cnt")
+    ui.summary_card(f"{city_nm} · {labels[scls]} — 이 업종 장사 성격", cp)
+    if cp["lic_note"]:
+        st.caption("개·폐업 숫자는 음식점 인허가 기준 — " + cp["lic_note"])
+else:
+    pc = scoring.load_config()["presets"]["coffee_snack"]
+    c1, c2 = st.columns(2)
+    for col, gk, cc in ((c1, "cafe", "cafe_cnt"), (c2, "snack", "snack_cnt")):
+        g = pc["groups"][gk]
+        with col:
+            ui.summary_card(f"{city_nm} · {g['name']} — 이 업종 장사 성격",
+                            catprof.profile(region, g["scls"], g["name"], table, others, cc, show_top=gk == "cafe"))
 axes_kr = {"demand": "수요", "competition": "경쟁", "stability": "안정성", "cost": "비용"}
 st.caption("점수 구성 · " + " · ".join(f"{axes_kr[k]} {v}%" for k, v in info["used_axes"].items())
            + "  |  빠진 자료·대체 지표: " + ", ".join(dict.fromkeys(info["missing"])))
