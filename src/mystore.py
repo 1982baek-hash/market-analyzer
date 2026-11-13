@@ -119,10 +119,15 @@ def stores_near(data: dict, cfg: dict, lat: float, lon: float, radius: int, grou
     return near
 
 
-def context_near(data: dict, lat: float, lon: float, radius: int) -> dict:
-    """반경 안 버스정류장·학교 수, 전체 점포 수."""
+def context_near(data: dict, lat: float, lon: float, radius: int, region_key: str | None = None) -> dict:
+    """반경 안 버스정류장·학교(대학 포함) 수, 전체 점포 수."""
     bus = _near(data.get("busstops"), lat, lon, radius)
     sch = _near(data.get("schools"), lat, lon, radius)
+    if region_key:
+        from src import univ
+        uni = univ.near(region_key, lat, lon, radius)
+        if len(uni):
+            sch = pd.concat([uni, sch], ignore_index=True).sort_values("dist")
     allst = _near(data.get("stores"), lat, lon, radius)
     levels = sch["level"].value_counts().to_dict() if not sch.empty and "level" in sch else {}
     return {"bus": len(bus), "schools": len(sch), "school_levels": levels, "stores": len(allst), "school_list": sch}
