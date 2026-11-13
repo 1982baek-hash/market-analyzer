@@ -193,3 +193,76 @@ def summary_card(title: str, prof: dict) -> None:
         + (f"<div class='sc-s'>💡 장사 힌트</div><ul>{tips}</ul>" if tips else "")
         + (f"<div class='sc-s'>⚠️ 주의</div><ul class='sc-w'>{warns}</ul>" if warns else "")
         + "</div>", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------- 상권 주변 뉴스
+@st.cache_data(ttl=6 * 3600, show_spinner="최근 뉴스를 찾는 중입니다...")
+def _news(queries: tuple, must: tuple, days: int, topic_only: bool, keys: tuple):
+    from src import news
+    items, errors = news.collect(list(queries), list(must) or None, days, keys if all(keys) else None)
+    if errors and len(errors) >= len(queries) * (2 if all(keys) else 1):
+        raise RuntimeError("; ".join(errors))  # 전부 실패한 결과는 캐시하지 않음 (다음에 다시 시도)
+    if topic_only:
+        items = [i for i in items if i["topic"]]
+    return items, errors
+
+
+def _news_safe(*args):
+    try:
+        return _news(*args)
+    except Exception as e:  # noqa: BLE001
+        return [], [str(e)]
+
+
+def _city_short(region_key: str) -> str:
+    nm = scoring.load_regions()[region_key]["name"].split()[-1]
+    return nm[:-1] if len(nm) > 2 and nm[-1] in "시군" else nm
+
+
+def _dong_terms(dong_nm: str) -> list[str]:
+    import re
+    base = re.sub(r"\d+", "", dong_nm)
+    base = base[:-1] if len(base) > 2 and base[-1] in "동면읍" else base
+    return list(dict.fromkeys([dong_nm, base] if len(base) >= 2 else [dong_nm]))
+
+
+def news_section(region_key: str, dong_nm: str, extra: list[str] | None = None, title: str = "📰 상권 주변 주요 뉴스",
+                 limit: int = 6) -> None:
+    """이 동네 이름이 들어간 기사 + 시 전체 상권·개발 기사 (최근 90일, 장사 관련만 추림)."""
+    from src import news
+    keys = (get_api_key("NAVER_SEARCH_CLIENT_ID"), get_api_key("NAVER_SEARCH_CLIENT_SECRET"))
+    city = _city_short(region_key)
+    terms = _dong_terms(dong_nm) + [e for e in (extra or []) if e]
+    dong_items, e1 = _news_safe(tuple(f"{city} {t}" for t in terms[:4]), tuple(terms), 90, False, keys)
+    city_q = f"{city} (상권 OR 상가 OR 개점 OR 착공 OR 개통 OR 입주 OR 분양 OR 전통시장 OR 축제 OR 대학)"
+    city_items, e2 = _news_safe((city_q,), (city,), 60, True, keys)
+    shown = {i["link"] for i in dong_items}
+    city_items = [i for i in city_items if i["link"] not in shown]
+
+    st.subheader(title)
+    t1, t2 = st.tabs([f"{dong_nm} ({len(dong_items)})", f"{city} 전체 상권·개발 ({len(city_items)})"])
+
+    def show(items, empty, q):
+        if not items:
+            st.caption(empty + f" · [Google 뉴스에서 직접 보기]({news.search_link(q)})")
+            return
+
+        def line(i):
+            d = i["date"].strftime("%y.%m.%d") if i["date"] else ""
+            tag = f"`{i['topic']}` " if i["topic"] else ""
+            t = i["title"].replace("[", "(").replace("]", ")")
+            return f"- {tag}[{t}]({i['link']})  \n  <small>{i['source']} · {d}</small>"
+
+        st.markdown("\n".join(line(i) for i in items[:limit]), unsafe_allow_html=True)
+        if len(items) > limit:
+            with st.expander(f"기사 {len(items) - limit}개 더 보기"):
+                st.markdown("\n".join(line(i) for i in items[limit:limit + 20]), unsafe_allow_html=True)
+
+    with t1:
+        show(dong_items, "최근 90일 동안 이 동네 이름이 들어간 장사 관련 기사가 없어요", f"{city} {dong_nm}")
+    with t2:
+        show(city_items, "최근 60일 동안 찾은 기사가 없어요", city_q)
+    errs = e1 + e2
+    st.caption("Google 뉴스" + (" · 네이버 뉴스" if all(keys) else "") + " 검색 결과에서 장사와 관련된 기사만 골라 분류했어요 "
+               "(동 행정 소식·사건사고 제외 · 6시간마다 새로 찾음)."
+               + (" ⚠️ 일부 뉴스를 불러오지 못했어요." if errs else ""))
