@@ -216,3 +216,83 @@ def business_age(data: dict, adong_cd: str | None, bzstat: list[str], today: dat
     op = scoring._to_date(df["open_date"])
     yrs = (pd.Timestamp(today or date.today()) - op).dt.days / 365.25
     return pd.Series({lb: int(((yrs >= a) & (yrs < b)).sum()) for a, b, lb in AGE_BINS})
+
+
+# ---------------------------------------------------------------- 동네 요약 카드 (그 동네 값만)
+def profile(region_key: str, dong_nm: str, item: str = "카페") -> dict | None:
+    """'이 동네 장사 성격' 요약: headline, tags, facts, tips, warns. 소상공인365 자료가 없으면 None."""
+    d = detail(region_key, dong_nm)
+    ls = latest_sales(region_key, dong_nm, item)
+    mx = sales_mix(region_key, dong_nm)
+    if d is None and ls is None and mx is None:
+        return None
+    city = CITY.get(region_key, "시")
+    cs = latest_sales(region_key, city, item)
+    g = yoy(region_key, dong_nm, item)
+    dv = delivery(region_key, dong_nm)
+    cu = customers(region_key, dong_nm)
+    tags, facts, tips, warns, head = [], [], [], [], []
+
+    # 장사 요일
+    if mx is not None:
+        wk = mx["weekday"][5] + mx["weekday"][6]
+        if wk <= 30:
+            head.append("평일 장사")
+            tips.append(f"매출의 {100 - wk:.0f}%가 평일 — 출근·점심 직장인 테이크아웃 중심, 주말은 짧게 열거나 쉬는 것도 방법")
+        elif wk >= 40:
+            head.append("주말 장사")
+            tips.append(f"주말(토·일) 매출이 {wk:.0f}% — 주말 인력·재고를 늘리고 나들이·가족 손님용 간식 세트")
+        else:
+            head.append("평일·주말 고른 동네")
+        h = int(np.argmax(mx["hour"]))
+        tags.append(f"매출 피크 {HOUR[h]} ({mx['hour'][h]:.0f}%)")
+        if mx["hour"][0] + mx["hour"][1] >= 25:
+            tips.append(f"오전(05–12시) 매출이 {mx['hour'][0] + mx['hour'][1]:.0f}% — 일찍 여는 모닝커피·아침 간식")
+        if mx["hour"][4] >= 24:
+            tips.append(f"저녁(18–23시) 매출이 {mx['hour'][4]:.0f}% — 늦게까지 영업할 가치가 있음")
+        a = int(np.argmax(mx["age"]))
+        head.append(f"{AGE[a]} 손님")
+        young = mx["age"][0] + mx["age"][1]
+        tags.append(f"주 고객 {AGE[a]} ({mx['age'][a]:.0f}%)")
+        tags.append(f"여성 매출 {mx['sex'][1]:.0f}%")
+        if young >= 17:
+            tips.append(f"10–20대 매출 {young:.0f}% — SNS에 올릴 만한 디저트·음료, 학생 할인")
+        elif young <= 9:
+            tips.append(f"10–20대 매출이 {young:.0f}%뿐 — 핫도그·간식은 학생보다 어른 손님 입맛(덜 단 메뉴) 위주로")
+
+    # 매출 수준·추세
+    if ls:
+        if cs:
+            r = ls[0] / cs[0]
+            head.append("카페 매출 높음" if r >= 1.2 else "카페 매출 낮음" if r <= 0.8 else "카페 매출 보통")
+            facts.append((f"{item} 한 곳당 월매출", f"{ls[0]:,.0f}만원", f"{city} 평균의 {r:.1f}배 ({ls[1]})"))
+        else:
+            facts.append((f"{item} 한 곳당 월매출", f"{ls[0]:,.0f}만원", ls[1]))
+        if g is not None:
+            facts.append(("1년 전보다", f"{g * 100:+.0f}%", "같은 달 비교"))
+            if g >= 0.1:
+                head.append("매출 성장 중")
+            elif g <= -0.15:
+                warns.append(f"카페 한 곳당 매출이 1년 새 {g * 100:.0f}% — 새 가게가 늘었거나 손님이 줄고 있는지 현장 확인 필요")
+    # 유동인구
+    if d is not None:
+        tot = floating_totals(region_key)
+        rank = sorted(tot.values(), reverse=True).index(d["total"]) + 1 if d["total"] in tot.values() else None
+        facts.append(("일평균 유동인구", f"{d['total']:,}명", f"조사한 {len(tot)}개 동 중 {rank}위" if rank else ""))
+        if ls and cs and rank and rank <= 3 and ls[0] / cs[0] <= 0.85:
+            warns.append("지나가는 사람은 많은데 카페 한 곳당 매출은 낮음 — 카페가 이미 많아 나눠 먹는 상권일 수 있음")
+    # 배달
+    if len(dv):
+        last = dv["합계"].iloc[-1]
+        dg = last / dv["합계"].iloc[0] - 1 if len(dv) == 13 and dv["합계"].iloc[0] else None
+        facts.append(("카페 배달 매출", f"월 {last:,.0f}만원", (f"1년 {dg * 100:+.0f}% · " if dg is not None else "")
+                      + f"여성 주문 {dv['여'].sum() / dv['합계'].sum() * 100:.0f}%"))
+        if last >= 500 or (dg is not None and dg >= 0.3):
+            tips.append("배달이 크거나 빠르게 늘고 있음 — 배달앱 입점과 포장 간식 메뉴를 처음부터 준비")
+    if cu:
+        reg = cu["new_regular"][1]
+        tags.append(f"단골 {reg:.0f}%")
+        if reg < 20:
+            tips.append(f"반경 500m 손님 중 단골(월 3회 이상)이 {reg:.0f}%뿐 — 스탬프·멤버십으로 재방문 만들기")
+    return {"headline": " · ".join(head), "tags": tags, "facts": facts, "tips": tips, "warns": warns,
+            "period": period(region_key)}

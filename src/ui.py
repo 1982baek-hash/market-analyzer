@@ -65,15 +65,17 @@ def pick_region(key: str = "region") -> str:
     return sel
 
 
-def pick_dong(data: dict, key: str = "dong") -> tuple[str, str]:
+def pick_dong(data: dict, key: str = "dong", main: bool = False) -> tuple[str, str]:
     master = scoring.dong_master(data).sort_values(["sigungu_nm", "adong_nm"])
     labels = dict(zip(master["adong_cd"], master["adong_nm"]))
     if master["sigungu_nm"].nunique() > 1:  # 성남시는 구 이름도 함께
         labels = dict(zip(master["adong_cd"], master["sigungu_nm"].str.split().str[-1] + " " + master["adong_nm"]))
     codes = list(labels)
     current = st.session_state.get("sel_dong")
-    sel = st.sidebar.selectbox("동네", codes, index=codes.index(current) if current in codes else 0,
-                               format_func=lambda c: labels[c], key=key)
+    box = st if main else st.sidebar
+    sel = box.selectbox("🔍 동네 검색 (이름을 입력하세요)" if main else "동네", codes,
+                        index=codes.index(current) if current in codes else 0,
+                        format_func=lambda c: labels[c], key=key)
     st.session_state["sel_dong"] = sel
     return sel, labels[sel]
 
@@ -166,3 +168,28 @@ def stat_tiles(tiles: list[tuple]) -> None:
         ".ml{font-size:.85rem;opacity:.75}.mv{font-size:1.6rem;font-weight:700;line-height:1.3}"
         ".mn{font-size:.72rem;opacity:.6;min-height:1em}</style>"
         f"<div class='mtg'>{cells}</div>", unsafe_allow_html=True)
+
+
+def summary_card(title: str, prof: dict) -> None:
+    """'이 동네 장사 성격' 요약 카드 (휴대폰에서도 한눈에)."""
+    import html as _h
+    e = _h.escape
+    tags = "".join(f"<span class='sc-tag'>{e(t)}</span>" for t in prof.get("tags", []))
+    facts = "".join(f"<div class='sc-f'><div class='sc-fl'>{e(a)}</div><div class='sc-fv'>{e(b)}</div>"
+                    f"<div class='sc-fn'>{e(c)}</div></div>" for a, b, c in prof.get("facts", []))
+    tips = "".join(f"<li>{e(t)}</li>" for t in prof.get("tips", []))
+    warns = "".join(f"<li>{e(t)}</li>" for t in prof.get("warns", []))
+    st.markdown(
+        "<style>.sc{border:1px solid rgba(228,87,86,.35);border-radius:14px;padding:14px 16px;margin:6px 0 14px;"
+        "background:rgba(228,87,86,.05)}.sc-t{font-size:.85rem;opacity:.7}.sc-h{font-size:1.35rem;font-weight:800;margin:2px 0 8px;line-height:1.35}"
+        ".sc-tag{display:inline-block;padding:3px 9px;margin:0 6px 6px 0;border-radius:999px;background:rgba(128,128,128,.14);font-size:.82rem}"
+        ".sc-fs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:6px 0}"
+        ".sc-f{background:rgba(128,128,128,.07);border-radius:10px;padding:8px 10px}.sc-fl{font-size:.78rem;opacity:.7}"
+        ".sc-fv{font-size:1.25rem;font-weight:700}.sc-fn{font-size:.72rem;opacity:.6}"
+        ".sc ul{margin:6px 0 0 1.1em;padding:0}.sc li{margin:3px 0;font-size:.92rem}.sc-w li{color:#c0392b}"
+        ".sc-s{font-weight:700;font-size:.85rem;margin-top:8px}</style>"
+        f"<div class='sc'><div class='sc-t'>{e(title)}</div><div class='sc-h'>{e(prof.get('headline') or '')}</div>"
+        f"<div>{tags}</div><div class='sc-fs'>{facts}</div>"
+        + (f"<div class='sc-s'>💡 장사 힌트</div><ul>{tips}</ul>" if tips else "")
+        + (f"<div class='sc-s'>⚠️ 주의</div><ul class='sc-w'>{warns}</ul>" if warns else "")
+        + "</div>", unsafe_allow_html=True)
