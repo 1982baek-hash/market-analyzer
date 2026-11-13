@@ -13,6 +13,9 @@ min_competitors: 3       # 동네 안 동종 점포가 이보다 적으면 보�
 min_license_cohort: 10   # 3년 폐업률을 계산할 인허가 이력이 이보다 적으면 보류
 
 # 업종 유형별 수요 구성 (합 100). 데이터가 없는 항목은 빼고 비례로 늘립니다.
+# 20대가 타깃인 업종(입지 찾기 › 다른 업종)에서 대학 근접에 주는 수요 가중치
+university_weight_20s: 15
+
 demand_types:
   생활밀착형: {resident: 50, worker: 10, floating: 15, target_age: 25}
   오피스형: {resident: 15, worker: 45, floating: 20, target_age: 20}
@@ -23,7 +26,8 @@ presets:
   coffee_snack:
     name: "커피 + 핫도그·간식 테이크아웃"
     target_ages: [10, 20]          # 10–29세 (주민등록 10세 단위)
-    demand: {target_age: 25, school: 20, worker: 20, floating: 20, resident: 15}
+    # university: 대학·전문대·대학원·방통대 학습관 근접 (config/universities.yaml)
+    demand: {target_age: 20, school: 15, university: 15, worker: 15, floating: 20, resident: 15}
     groups:
       cafe:
         name: "카페"
