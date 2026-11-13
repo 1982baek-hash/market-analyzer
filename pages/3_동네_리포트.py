@@ -265,7 +265,7 @@ with fc2:
             mine_sch = pd.concat([uni, mine_sch], ignore_index=True)
         st.metric("중·고등학교", f"{int(mine_sch['level'].str.contains('중학교|고등학교').sum())}곳")
         st.caption(f"초등학교 {int(mine_sch['level'].str.contains('초등').sum())}곳"
-                   + (f" · 대학교 {int((mine_sch['level'] == '대학교').sum())}곳" if (mine_sch["level"] == "대학교").any() else "")
+                   + (f" · 대학·교육기관 {len(uni)}곳" if len(uni) else "")
                    + " · 학교 위치표준데이터 기준")
         if len(mine_sch):
             st.dataframe(mine_sch[["name", "level", "addr"]].rename(columns={"name": "학교", "level": "구분", "addr": "주소"}),

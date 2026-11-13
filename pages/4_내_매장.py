@@ -254,10 +254,10 @@ if ctx["schools"]:
     with st.expander(f"반경 안 학교 {ctx['schools']}곳"):
         s = ctx["school_list"]
         st.dataframe(pd.DataFrame({"학교": s["name"], "구분": s["level"],
-                                   "거리": [("캠퍼스 안" if lv == "대학교" and d < 1 else f"{int(round(d, -1))}m")
-                                          for d, lv in zip(s["dist"], s["level"])]}),
+                                   "거리": [("캠퍼스 안" if cp is True and d < 1 else f"{int(round(d, -1))}m")
+                                          for d, cp in zip(s["dist"], s.get("campus", pd.Series([None] * len(s))))]}),
                      hide_index=True, use_container_width=True)
-        st.caption("초·중·고는 학교 위치표준데이터, 대학은 캠퍼스 경계(OpenStreetMap)까지 거리 기준")
+        st.caption("초·중·고는 학교 위치표준데이터, 대학·대학원·방통대 학습관은 캠퍼스 경계(OpenStreetMap)까지 거리 기준")
 
 # ---------------------------------------------------------------- 7. 위치 저장
 st.divider()
