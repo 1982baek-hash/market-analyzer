@@ -1,7 +1,7 @@
 {
   "_run": {
-    "failures": 0,
-    "finished_at": "2026-11-13T00:44:33+09:00"
+    "failures": 1,
+    "finished_at": "2026-11-13T09:32:25+09:00"
   },
   "busstops_andong": {
     "base_period": "202611",
@@ -9,7 +9,7 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "busstops/andong.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
     "message": "새 자료 저장 (정류장 1,445곳)",
     "method": "API 자동 (GitHub Actions)",
@@ -24,7 +24,7 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "busstops/seongnam.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
     "message": "새 자료 저장 (정류장 1,099곳)",
     "method": "API 자동 (GitHub Actions)",
@@ -39,7 +39,7 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "busstops/yecheon.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
     "message": "새 자료 저장 (정류장 712곳)",
     "method": "API 자동 (GitHub Actions)",
@@ -50,13 +50,13 @@
   },
   "floating_seongnam": {
     "cycle": "월 1회 확인",
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "message": "GitHub Secrets에 GG_API_KEY(경기데이터드림 인증키)가 없어 받지 않음",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "message": "서버 오류 HTTP 502",
     "method": "경기데이터드림 Open API (GitHub Actions)",
     "name": "경기도 유동인구 (경기도 성남시)",
     "region": "seongnam",
     "rows": 0,
-    "status": "NOT_PROVIDED"
+    "status": "FAIL"
   },
   "license_general_restaurants_andong": {
     "base_period": "20261113",
@@ -65,15 +65,15 @@
     "group_codes": [
       "5070000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "last_updated": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "last_updated": "2026-11-13T09:32:25+09:00",
     "message": "변경분 5건 반영 · 누적 8,053건 (영업 중 2,634건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 일반음식점 (경상북도 안동시)",
     "region": "andong",
     "rows": 8053,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "license_general_restaurants_seongnam": {
     "base_period": "20261113",
@@ -82,15 +82,15 @@
     "group_codes": [
       "3780000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "last_updated": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "last_updated": "2026-11-13T09:32:25+09:00",
     "message": "변경분 29건 반영 · 누적 30,755건 (영업 중 8,992건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 일반음식점 (경기도 성남시)",
     "region": "seongnam",
     "rows": 30755,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "license_general_restaurants_yecheon": {
     "base_period": "20261113",
@@ -99,15 +99,15 @@
     "group_codes": [
       "5230000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "last_updated": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "last_updated": "2026-11-13T09:32:25+09:00",
     "message": "변경분 2건 반영 · 누적 2,398건 (영업 중 749건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 일반음식점 (경상북도 예천군)",
     "region": "yecheon",
     "rows": 2398,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "license_rest_cafes_andong": {
     "base_period": "20261113",
@@ -116,15 +116,15 @@
     "group_codes": [
       "5070000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "last_updated": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "last_updated": "2026-11-13T09:32:25+09:00",
     "message": "변경분 2건 반영 · 누적 2,366건 (영업 중 717건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 휴게음식점 (경상북도 안동시)",
     "region": "andong",
     "rows": 2366,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "license_rest_cafes_seongnam": {
     "base_period": "20261113",
@@ -133,15 +133,15 @@
     "group_codes": [
       "3780000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
-    "last_updated": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
+    "last_updated": "2026-11-13T09:32:25+09:00",
     "message": "변경분 7건 반영 · 누적 10,945건 (영업 중 2,918건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 휴게음식점 (경기도 성남시)",
     "region": "seongnam",
     "rows": 10945,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "license_rest_cafes_yecheon": {
     "base_period": "20261112",
@@ -150,7 +150,7 @@
     "group_codes": [
       "5230000"
     ],
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T19:56:29+09:00",
     "message": "변경 없음 · 누적 578건",
     "method": "API 자동 (GitHub Actions)",
@@ -158,13 +158,13 @@
     "region": "yecheon",
     "rows": 578,
     "status": "SUCCESS",
-    "synced_through": "2026-11-13T00:44:33+09:00"
+    "synced_through": "2026-11-13T09:32:25+09:00"
   },
   "population_andong": {
     "base_period": "202610",
     "cycle": "월 1회",
     "file": "population/andong_202610.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (202610 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -177,7 +177,7 @@
     "base_period": "202610",
     "cycle": "월 1회",
     "file": "population/seongnam_202610.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (202610 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -190,7 +190,7 @@
     "base_period": "202610",
     "cycle": "월 1회",
     "file": "population/yecheon_202610.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (202610 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -204,9 +204,9 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "schools/andong.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
-    "message": "새 자료 저장 (초등학교 30, 고등학교 13, 중학교 13)",
+    "message": "이번 달 이미 받음 · 56곳",
     "method": "API 자동 (GitHub Actions)",
     "name": "학교 위치 (경상북도 안동시)",
     "region": "andong",
@@ -218,9 +218,9 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "schools/seongnam.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
-    "message": "새 자료 저장 (초등학교 73, 중학교 45, 고등학교 36)",
+    "message": "이번 달 이미 받음 · 154곳",
     "method": "API 자동 (GitHub Actions)",
     "name": "학교 위치 (경기도 성남시)",
     "region": "seongnam",
@@ -232,9 +232,9 @@
     "collected_month": "202611",
     "cycle": "월 1회",
     "file": "schools/yecheon.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-13T00:44:33+09:00",
-    "message": "새 자료 저장 (초등학교 12, 중학교 9, 고등학교 3)",
+    "message": "이번 달 이미 받음 · 24곳",
     "method": "API 자동 (GitHub Actions)",
     "name": "학교 위치 (경상북도 예천군)",
     "region": "yecheon",
@@ -245,7 +245,7 @@
     "base_period": "2024",
     "cycle": "연 1회",
     "file": "sgis/andong_2024.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (2024년 자료 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -258,7 +258,7 @@
     "base_period": "2024",
     "cycle": "연 1회",
     "file": "sgis/seongnam_2024.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (2024년 자료 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -271,7 +271,7 @@
     "base_period": "2024",
     "cycle": "연 1회",
     "file": "sgis/yecheon_2024.parquet",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T18:25:51+09:00",
     "message": "변경 없음 (2024년 자료 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -285,7 +285,7 @@
     "cycle": "분기 갱신 · 매주 확인",
     "file": "stores/andong_202611.parquet",
     "fingerprint": "231e5ac692315ed601633f8e347cff599d7fe0d8",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T17:59:11+09:00",
     "message": "변경 없음 (이전 스냅샷 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -299,7 +299,7 @@
     "cycle": "분기 갱신 · 매주 확인",
     "file": "stores/seongnam_202611.parquet",
     "fingerprint": "ef587ffb25347c84f5a219e192288c16ef236666",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T17:59:11+09:00",
     "message": "변경 없음 (이전 스냅샷 유지)",
     "method": "API 자동 (GitHub Actions)",
@@ -313,7 +313,7 @@
     "cycle": "분기 갱신 · 매주 확인",
     "file": "stores/yecheon_202611.parquet",
     "fingerprint": "b66a4ab5907d0a4c7cd93e65a5215e39ba020a75",
-    "last_checked": "2026-11-13T00:44:33+09:00",
+    "last_checked": "2026-11-13T09:32:25+09:00",
     "last_updated": "2026-11-12T17:59:11+09:00",
     "message": "변경 없음 (이전 스냅샷 유지)",
     "method": "API 자동 (GitHub Actions)",
