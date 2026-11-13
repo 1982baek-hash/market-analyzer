@@ -115,6 +115,12 @@ with fc1:
             st.markdown("**시간대별 유동인구 비율** (경기도 집계)")
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             st.caption(f"기준 {latest[:4]}.{latest[4:]} · 시간대코드는 경기데이터드림 정의(TZ01부터 이른 시간대 순)")
+    sb, sb_period = scoring.sbiz_floating(region)
+    if dong_nm in sb:
+        ranked = sorted(sb.values(), reverse=True)
+        st.metric("일평균 유동인구 (소상공인365)", f"{sb[dong_nm]:,}명",
+                  help="통신 위치 자료로 추정한 값을 소상공인365 화면에서 옮겨 적은 것 (config/sbiz_floating.yaml)")
+        st.caption(f"조사한 시내 동네 {len(sb)}곳 중 {ranked.index(sb[dong_nm]) + 1}위 · {sb_period} 기준")
     bus = data.get("busstops")
     if bus is not None and len(bus):
         n_bus = int((scoring.attach_dong_key(bus, scoring.dong_master(data)) == dong_cd).sum())
