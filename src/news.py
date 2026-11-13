@@ -2,6 +2,7 @@
 
 - 기본: Google 뉴스 RSS (인증키 없이 동작, 가족이 보는 개인용 화면에서만 사용)
 - Streamlit Secrets에 NAVER_SEARCH_CLIENT_ID / NAVER_SEARCH_CLIENT_SECRET 가 있으면 네이버 뉴스 검색 API를 함께 씀
+  (네이버클라우드 NAVER API HUB 앱의 Client ID/Secret. 예전 개발자센터 키도 동작)
 - 결과는 6시간 동안 캐시
 """
 
@@ -65,9 +66,14 @@ def google(query: str, days: int = 90, timeout: int = 8) -> list[dict]:
 
 
 def naver(query: str, cid: str, secret: str, timeout: int = 8) -> list[dict]:
-    r = requests.get("https://openapi.naver.com/v1/search/news.json",
-                     params={"query": query, "display": 50, "sort": "date"},
-                     headers={"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": secret}, timeout=timeout)
+    """네이버 뉴스 검색. 2026년 7월부터 새 키는 네이버클라우드 'NAVER API HUB'에서 발급 → HUB 주소로 먼저 부르고,
+    예전 개발자센터 키(2027년 6월까지 사용 가능)면 옛 주소로 다시 부릅니다."""
+    params = {"query": query, "display": 50, "sort": "date"}
+    r = requests.get("https://naverapihub.apigw.ntruss.com/search/v1/news", params=params,
+                     headers={"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": secret}, timeout=timeout)
+    if r.status_code in (401, 403):
+        r = requests.get("https://openapi.naver.com/v1/search/news.json", params=params,
+                         headers={"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": secret}, timeout=timeout)
     r.raise_for_status()
     out = []
     for it in r.json().get("items", []):
