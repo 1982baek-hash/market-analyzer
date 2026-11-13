@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src import sbiz, scoring, ui
+from src import sbiz, scoring, ui, univ
 
 st.set_page_config(page_title="동네 리포트", page_icon="🏘️", layout="wide")
 ui.require_login()
@@ -259,8 +259,14 @@ with fc2:
     sch = data.get("schools")
     if sch is not None and len(sch):
         mine_sch = sch[scoring.attach_dong_key(sch, scoring.dong_master(data)) == dong_cd]
+        uni = univ.with_dong(region, data["stores"])
+        if len(uni):
+            uni = uni[scoring.attach_dong_key(uni, scoring.dong_master(data)) == dong_cd]
+            mine_sch = pd.concat([uni, mine_sch], ignore_index=True)
         st.metric("중·고등학교", f"{int(mine_sch['level'].str.contains('중학교|고등학교').sum())}곳")
-        st.caption(f"초등학교 {int(mine_sch['level'].str.contains('초등').sum())}곳 · 학교 위치표준데이터 기준")
+        st.caption(f"초등학교 {int(mine_sch['level'].str.contains('초등').sum())}곳"
+                   + (f" · 대학교 {int((mine_sch['level'] == '대학교').sum())}곳" if (mine_sch["level"] == "대학교").any() else "")
+                   + " · 학교 위치표준데이터 기준")
         if len(mine_sch):
             st.dataframe(mine_sch[["name", "level", "addr"]].rename(columns={"name": "학교", "level": "구분", "addr": "주소"}),
                          hide_index=True, use_container_width=True, height=180)
