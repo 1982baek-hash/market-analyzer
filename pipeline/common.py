@@ -66,7 +66,7 @@ def get_json(url: str, params: dict, tries: int = 4, timeout: int = 60) -> dict:
                 raise
             last_err = e
         if attempt < tries:
-            time.sleep(2 * attempt)
+            time.sleep(min(5 * attempt, 30))  # 서버가 잠깐 멈춘 경우를 기다림
     raise last_err
 
 

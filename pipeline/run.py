@@ -54,6 +54,14 @@ def main() -> int:
             jobs.append((f"license_{svc}_{rk}", f"인허가 {licenses.SERVICES[svc]} {r['name']}", r,
                          lambda svc=svc, rk=rk, r=r, p=None: licenses.collect(svc, rk, r, need_data_key(), p, now)))
 
+    # 매일 재시도 모드: 지난번에 실패한 자료만 다시 받는다 (정기 수집은 월요일 새벽)
+    if os.environ.get("RETRY_ONLY") == "1":
+        failed_ids = {sid for sid, st in status.items() if isinstance(st, dict) and st.get("status") == "FAIL"}
+        jobs = [j for j in jobs if j[0] in failed_ids]
+        print(f"[재시도] 지난 수집에서 실패한 자료 {len(jobs)}개: {', '.join(j[0] for j in jobs) or '없음'}", flush=True)
+        if not jobs:
+            return 0
+
     for source_id, label, region, fn in jobs:
         prev = status.get(source_id, {})
         print(f"[수집] {label} ...", flush=True)

@@ -50,7 +50,7 @@ def collect_region(region_key: str, region: dict, gg_key: str, prev: dict, now) 
     prefix = SIGUNGU_PREFIX[region_key]
     keep, page, total = [], 1, None
     while True:
-        data = get_json(URL, {"KEY": gg_key, "Type": "json", "pIndex": str(page), "pSize": str(PAGE)}, tries=4, timeout=90)
+        data = get_json(URL, {"KEY": gg_key, "Type": "json", "pIndex": str(page), "pSize": str(PAGE)}, tries=6, timeout=120)
         rows, t = _rows(data)
         total = t if total is None else total
         keep.extend(r for r in rows if str(r.get("ADSTRD_CD", "")).startswith(prefix))
