@@ -4,6 +4,8 @@ on:
   schedule:
     # GitHub 일정은 UTC 기준. 일요일 18:17 UTC = 월요일 03:17 한국시간
     - cron: "17 18 * * 0"
+    # 매일 03:47 한국시간: 지난 수집에서 실패한 자료만 다시 시도 (실패한 게 없으면 바로 끝남)
+    - cron: "47 18 * * *"
   workflow_dispatch: # Actions 탭에서 'Run workflow' 버튼으로 바로 실행
 
 permissions:
@@ -40,6 +42,7 @@ jobs:
           SGIS_CONSUMER_KEY: ${{ secrets.SGIS_CONSUMER_KEY }}
           SGIS_CONSUMER_SECRET: ${{ secrets.SGIS_CONSUMER_SECRET }}
           GG_API_KEY: ${{ secrets.GG_API_KEY }}
+          RETRY_ONLY: ${{ github.event.schedule == '47 18 * * *' && '1' || '0' }}
         run: python -m pipeline.run
 
       - name: 결과 커밋
