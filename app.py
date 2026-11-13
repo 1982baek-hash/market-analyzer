@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="우리 가족 상권 분석기 (성남·안동·예천)",
     page_icon="🏪",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # 휴대폰에서는 접힌 채로 시작
 )
 
 require_login()
@@ -34,7 +34,7 @@ db = DatabaseManager()
 st.title("🏪 우리 가족 상권 분석기")
 
 st.markdown("##### 무엇을 정하려고 하세요?")
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     with st.container(border=True):
         st.page_link("pages/1_입지_찾기.py", label="**입지 찾기**", icon="🎯")
@@ -47,6 +47,10 @@ with c3:
     with st.container(border=True):
         st.page_link("pages/3_동네_리포트.py", label="**동네 리포트**", icon="🏘️")
         st.caption("이 동네는 어떤 곳일까?")
+with c4:
+    with st.container(border=True):
+        st.page_link("pages/4_내_매장.py", label="**내 매장**", icon="📍")
+        st.caption("우리 가게 주변이 변했나?")
 
 run_info = status_summary()
 if not run_info["has_run"]:
@@ -59,6 +63,7 @@ elif run_info["failures"]:
 else:
     finished = run_info["finished_at"][:16].replace("T", " ")
     st.caption(f"✅ 자동 수집 정상 · 마지막 확인 {finished} (매주 월요일 새벽 자동 갱신)")
+st.page_link("pages/5_데이터_현황.py", label="데이터 현황 보기 — 무엇이 언제 갱신됐나?", icon="🔄")
 
 st.markdown(
     """
