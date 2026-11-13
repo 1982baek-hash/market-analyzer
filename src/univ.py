@@ -61,17 +61,18 @@ def near(region_key: str, lat: float, lon: float, radius: int) -> pd.DataFrame:
         d = boundary_distance(lat, lon, c["polygon"])
         if d <= radius:
             clat, clon = center(c["polygon"])
-            rows.append({"name": c["name"], "level": "대학교", "addr": c.get("addr", ""), "dist": d,
-                         "lat": clat, "lon": clon})
-    return pd.DataFrame(rows, columns=["name", "level", "addr", "dist", "lat", "lon"])
+            rows.append({"name": c["name"], "level": c.get("kind", "대학교"), "addr": c.get("addr", ""), "dist": d,
+                         "lat": clat, "lon": clon, "campus": len(c["polygon"]) > 2})
+    return pd.DataFrame(rows, columns=["name", "level", "addr", "dist", "lat", "lon", "campus"])
 
 
 def table(region_key: str) -> pd.DataFrame:
     rows = []
     for c in campuses(region_key):
         clat, clon = center(c["polygon"])
-        rows.append({"name": c["name"], "level": "대학교", "addr": c.get("addr", ""), "lat": clat, "lon": clon})
-    return pd.DataFrame(rows, columns=["name", "level", "addr", "lat", "lon"])
+        rows.append({"name": c["name"], "level": c.get("kind", "대학교"), "addr": c.get("addr", ""), "lat": clat, "lon": clon,
+                     "weight": c.get("weight", 1.0)})
+    return pd.DataFrame(rows, columns=["name", "level", "addr", "lat", "lon", "weight"])
 
 
 def with_dong(region_key: str, stores: pd.DataFrame) -> pd.DataFrame:
@@ -86,3 +87,36 @@ def with_dong(region_key: str, stores: pd.DataFrame) -> pd.DataFrame:
         i = d.idxmin()
         cds.append(s.at[i, "adong_cd"]), nms.append(s.at[i, "adong_nm"]), sgg.append(s.at[i, "sigungu_cd"])
     return t.assign(adong_cd=cds, adong_nm=nms, sigungu_cd=sgg)
+
+
+REACH_M = 1500  # 상권 중심에서 이 거리 안의 캠퍼스만 점수에 넣음 (가까울수록 크게)
+
+
+def dong_scores(region_key: str, centers: pd.DataFrame, campus_dong: dict | None = None) -> pd.DataFrame:
+    """동네별 대학 근접 점수.
+
+    centers: index=동 코드, 열 lat/lon (상권 중심). campus_dong: {캠퍼스 이름: 동 코드}.
+    raw = Σ 가중치 × max(0, 1 − 경계까지 거리/1.5km)  (캠퍼스가 그 동네 안이면 최소 0.5)
+    """
+    cs = campuses(region_key)
+    raw, near_txt = [], []
+    for cd, r in centers.iterrows():
+        tot, items = 0.0, []
+        for c in cs:
+            if pd.isna(r["lat"]):
+                continue
+            d = boundary_distance(r["lat"], r["lon"], c["polygon"])
+            prox = max(0.0, 1 - d / REACH_M)
+            inside = bool(campus_dong and campus_dong.get(c["name"]) == cd)
+            if inside:
+                prox = max(prox, 0.5)
+            if prox > 0:
+                tot += c.get("weight", 1.0) * prox
+                where = "상권 안" if d < 1 else f"{d / 1000:.1f}km"
+                items.append((d, f"{c['name']} {where}" + (" · 동네 안" if inside and d >= 1 else "")))
+        raw.append(tot)
+        near_txt.append(", ".join(t for _, t in sorted(items)[:2]))
+    out = pd.DataFrame({"univ_raw": raw, "univ_near": near_txt}, index=centers.index)
+    mx = out["univ_raw"].max()
+    out["univ_score"] = (out["univ_raw"] / mx * 100) if mx and mx > 0 else 0.0
+    return out

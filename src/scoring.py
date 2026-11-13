@@ -60,6 +60,7 @@ def load_region_data(region_key: str) -> dict:
         p = MART / key / f"{region_key}.parquet"
         if p.exists():
             out[key] = pd.read_parquet(p)
+    out["region_key"] = region_key
     for svc in ("rest_cafes", "general_restaurants"):
         p = MART / "licenses" / f"{svc}_{region_key}.parquet"
         if p.exists():
@@ -203,6 +204,17 @@ def base_metrics(data: dict, cfg: dict, target_ages=(20, 30, 40)) -> pd.DataFram
     else:
         m["floating"] = np.nan
     m["people"] = m["resident"].fillna(0) + m["worker"].fillna(0)
+    # 대학·대학원 등 큰 교육기관 근접 (config/universities.yaml)
+    from src import univ
+    rk = data.get("region_key")
+    if rk and univ.campuses(rk):
+        cent = stores.dropna(subset=["lon", "lat"]).groupby("dong")[["lon", "lat"]].median().reindex(m.index)
+        cd = univ.with_dong(rk, data["stores"])
+        cd["dong"] = attach_dong_key(cd, m.reset_index()) if len(cd) else None
+        us = univ.dong_scores(rk, cent, dict(zip(cd["name"], cd["dong"])) if len(cd) else None)
+        m = m.join(us)
+    else:
+        m["univ_raw"], m["univ_near"], m["univ_score"] = 0.0, "", np.nan
     return m
 
 
@@ -294,6 +306,7 @@ def score_preset(region_key: str, preset_key: str = "coffee_snack", data: dict |
     dparts = {
         "target_age": pct_rank(m["target_share"]) if m["target_share"].notna().any() else None,
         "school": school_score(m),
+        "university": m["univ_score"] if m["univ_raw"].sum() > 0 else None,
         "worker": pct_rank(m["worker"]) if m["worker"].notna().any() else None,
         "floating": floating_score(m),  # 동네 유동인구 자료가 없어 버스정류장 수로 대신
         "resident": pct_rank(m["resident"]) if m["resident"].notna().any() else None,
@@ -344,7 +357,7 @@ def score_preset(region_key: str, preset_key: str = "coffee_snack", data: dict |
     m = m.sort_values(["score", "D"], ascending=[False, False], na_position="last").reset_index(drop=True)
     m["rank"] = np.where(m["score"].notna(), np.arange(1, len(m) + 1), np.nan)
 
-    missing_labels = {"floating": "유동인구", "school": "학교 위치", "cost": "임대료"}
+    missing_labels = {"floating": "유동인구", "school": "학교 위치", "cost": "임대료", "university": "대학"}
     proxies = []
     if dparts["floating"] is not None and not m["floating"].notna().any():
         proxies.append("유동인구(버스정류장 수로 대신)")
@@ -388,6 +401,8 @@ def _reasons_coffee(r: pd.Series, m: pd.DataFrame) -> list:
     if pd.notna(r.get("schools_mid_high")) and avg_sch:
         add(r["schools_mid_high"] >= avg_sch, (r["schools_mid_high"] - avg_sch) / avg_sch,
             f"중·고등학교 {int(r['schools_mid_high'])}곳 (동네 평균 {avg_sch:.1f}곳)")
+    if r.get("univ_raw", 0) > 0 and r.get("univ_near"):
+        add(True, 0.4 + r["univ_raw"], f"대학 가까움: {r['univ_near']} (상권 중심→캠퍼스 경계)")
     avg_fl = m["floating"].mean()
     if pd.notna(r.get("floating")) and avg_fl:
         add(r["floating"] >= avg_fl, (r["floating"] - avg_fl) / avg_fl,
@@ -521,8 +536,11 @@ def score_category(region_key: str, scls_cd: str, demand_type: str, data: dict |
     m["C"] = (pct_rank(m["comp_per10k"], higher_is_better=False)
               - np.where(fr > city_fr, 10, 0)).clip(0, 100)
 
-    w = cfg["demand_types"][demand_type]
+    w = dict(cfg["demand_types"][demand_type])
+    if 20 in ages:  # 20대가 타깃인 업종은 대학 근처를 수요로 봄
+        w["university"] = cfg.get("university_weight_20s", 15)
     dparts = {
+        "university": m["univ_score"] if m["univ_raw"].sum() > 0 else None,
         "target_age": pct_rank(m["target_share"]) if m["target_share"].notna().any() else None,
         "worker": pct_rank(m["worker"]) if m["worker"].notna().any() else None,
         "floating": floating_score(m),
@@ -561,6 +579,8 @@ def score_category(region_key: str, scls_cd: str, demand_type: str, data: dict |
 
     def reasons(r):
         out = [f"인구 1만 명당 {scls_nm} {r['comp_per10k']:.1f}개 (시 평균 {city_per10k:.1f}개)"]
+        if "university" in w and r.get("univ_raw", 0) > 0 and r.get("univ_near"):
+            out.append(f"🎓 대학 가까움: {r['univ_near']}")
         if pd.notna(r.get("target_share")):
             out.append(f"타깃 연령 비중 {_fmt_pct(r['target_share'])}")
         if pd.notna(r.get("lic_closure3")):
