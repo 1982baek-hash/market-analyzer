@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html,body{margin:0;padding:0;font-family:sans-serif}
+#wrap{position:relative}
+#map{width:100%;border-radius:8px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:10;background:rgba(17,17,17,.78);color:#fff;
+      font-size:13px;padding:6px 12px;border-radius:999px;pointer-events:none;white-space:nowrap}
+#ring{position:absolute;z-index:11;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;border:3px solid #e45756;
+      opacity:0;pointer-events:none;transform:scale(.3)}
+#ring.on{opacity:.9;transform:scale(1);transition:transform .5s linear,opacity .1s}
+#err{display:none;padding:12px;font-size:14px;color:#b00020;background:#fff4f4;border-radius:8px}
+</style></head><body>
+<div id="wrap"><div id="map"></div><div id="hint">📍 매장을 열고 싶은 곳을 꾹 (길게) 누르세요</div><div id="ring"></div></div>
+<div id="err"></div>
+<script>
+// ---- Streamlit 컴포넌트 통신 (streamlit-component-lib 없이 직접)
+function send(type, data) { window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*"); }
+function setValue(v) { send("streamlit:setComponentValue", { value: v, dataType: "json" }); }
+function setHeight(h) { send("streamlit:setFrameHeight", { height: h }); }
+
+let map = null, overlays = [], pickOverlays = [], args = null, lastView = null, loading = false;
+
+window.navermap_authFailure = function () {
+  document.getElementById('wrap').style.display = 'none';
+  const e = document.getElementById('err'); e.style.display = 'block';
+  e.innerHTML = '네이버 지도 인증에 실패했습니다. NCP 콘솔 › Maps › Application의 <b>Web 서비스 URL</b>에 이 앱 주소('
+    + location.origin + ')가 등록돼 있는지 확인해 주세요.';
+  setHeight(80);
+};
+
+function loadNaver(cid, cb) {
+  if (window.naver && naver.maps && naver.maps.Map) { cb(); return; }
+  if (!loading) {
+    loading = true;
+    const s = document.createElement('script');
+    s.src = 'https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=' + encodeURIComponent(cid) + '&submodules=geocoder';
+    document.head.appendChild(s);
+  }
+  (function wait(n) {
+    if (window.naver && naver.maps && naver.maps.Map && naver.maps.LatLngBounds) { cb(); return; }
+    if (n > 150) { document.getElementById('map').innerHTML = '<p style="padding:12px">네이버 지도를 불러오지 못했습니다.</p>'; return; }
+    setTimeout(function () { wait(n + 1); }, 100);
+  })(0);
+}
+
+function dot(p, s, color, label, border) {
+  const lab = label ? `<span style="position:absolute;left:${s + 4}px;top:-4px;white-space:nowrap;font:700 12px sans-serif;color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff">${label}</span>` : '';
+  return new naver.maps.Marker({
+    position: new naver.maps.LatLng(p.lat, p.lon), map: map,
+    icon: { content: `<div style="position:relative;width:${s}px;height:${s}px;border-radius:50%;background:${color};opacity:.9;border:${border || '1px solid #fff'};box-shadow:0 0 2px rgba(0,0,0,.4)">${lab}</div>`,
+            anchor: new naver.maps.Point(s / 2, s / 2) }
+  });
+}
+
+let tip = null;
+function withTip(m, text) {
+  if (!text) return;
+  const show = () => { tip.setContent(`<div style="padding:4px 8px;background:#fff;border:1px solid #ccc;border-radius:4px;font:13px sans-serif;white-space:nowrap">${text}</div>`); tip.open(map, m); };
+  naver.maps.Event.addListener(m, 'mouseover', show);
+  naver.maps.Event.addListener(m, 'click', show);
+  naver.maps.Event.addListener(m, 'mouseout', () => tip.close());
+}
+
+function drawPick(pick, radius, comps) {
+  pickOverlays.forEach(o => o.setMap(null)); pickOverlays = [];
+  if (!pick) return;
+  const c = new naver.maps.LatLng(pick.lat, pick.lon);
+  pickOverlays.push(new naver.maps.Circle({ map: map, center: c, radius: radius, strokeColor: '#1f6feb', strokeWeight: 2,
+                                           strokeOpacity: .9, fillColor: '#1f6feb', fillOpacity: .07 }));
+  (comps || []).forEach(p => { const m = dot(p, 9, p.color || '#e45756', '', '1px solid #fff'); withTip(m, p.tip); pickOverlays.push(m); });
+  pickOverlays.push(new naver.maps.Marker({ position: c, map: map,
+    icon: { content: '<div style="font-size:30px;line-height:30px;transform:translate(-15px,-30px)">📍</div>', anchor: new naver.maps.Point(0, 0) } }));
+}
+
+// 고른 자리 주소: 네이버 지도처럼 도로명 주소를 찾아 함께 보냄 (Geocoding이 꺼져 있으면 주소 없이 보냄)
+function addressOf(coord, cb) {
+  let done = false;
+  const finish = a => { if (!done) { done = true; cb(a); } };
+  setTimeout(() => finish(null), 1500);
+  try {
+    naver.maps.Service.reverseGeocode({ coords: coord, orders: 'roadaddr,addr' }, (status, res) => {
+      try {
+        if (status !== naver.maps.Service.Status.OK) return finish(null);
+        const a = res.v2 && res.v2.address;
+        finish((a && (a.roadAddress || a.jibunAddress)) || null);
+      } catch (e) { finish(null); }
+    });
+  } catch (e) { finish(null); }
+}
+
+function choose(coord) {
+  const v = { lat: coord.lat(), lon: coord.lng(), t: Date.now(), address: null };
+  drawPick({ lat: v.lat, lon: v.lon }, (args && args.radius) || 500, []);
+  const hint = document.getElementById('hint');
+  hint.textContent = '🔎 이 자리 주변 상권을 보는 중…';
+  addressOf(coord, a => { v.address = a; setValue(v); setTimeout(() => hint.textContent = '📍 다른 곳도 꾹 (길게) 눌러 보세요', 800); });
+}
+
+// ---- 꾹 누르기: 휴대폰은 longtap, PC는 마우스를 0.6초 누르고 있으면 (끌면 취소). 오른쪽 클릭도 됨.
+function bindLongPress() {
+  let timer = null, start = null;
+  const ring = document.getElementById('ring');
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } ring.className = ''; };
+  naver.maps.Event.addListener(map, 'longtap', e => { cancel(); choose(e.coord); });
+  naver.maps.Event.addListener(map, 'rightclick', e => { cancel(); choose(e.coord); });
+  naver.maps.Event.addListener(map, 'mousedown', e => {
+    cancel();
+    if (e.pointerEvent && e.pointerEvent.button === 2) return;
+    start = e.offset ? { x: e.offset.x, y: e.offset.y } : null;
+    if (start) { ring.style.left = start.x + 'px'; ring.style.top = start.y + 'px'; requestAnimationFrame(() => ring.className = 'on'); }
+    const coord = e.coord;
+    timer = setTimeout(() => { timer = null; ring.className = ''; choose(coord); }, 600);
+  });
+  naver.maps.Event.addListener(map, 'mouseup', cancel);
+  naver.maps.Event.addListener(map, 'dragstart', cancel);
+  naver.maps.Event.addListener(map, 'zoom_changed', cancel);
+  naver.maps.Event.addListener(map, 'mousemove', e => {
+    if (timer && start && e.offset && Math.hypot(e.offset.x - start.x, e.offset.y - start.y) > 8) cancel();
+  });
+}
+
+function render() {
+  const a = args;
+  const el = document.getElementById('map');
+  el.style.height = (a.height - 8) + 'px';
+  if (!map) {
+    map = new naver.maps.Map('map', {
+      center: new naver.maps.LatLng(a.center[0], a.center[1]), zoom: a.zoom || 13, scaleControl: true, mapDataControl: false,
+      zoomControl: true, zoomControlOptions: { position: naver.maps.Position.TOP_RIGHT, style: naver.maps.ZoomControlStyle.SMALL }
+    });
+    tip = new naver.maps.InfoWindow({ content: '', borderWidth: 0, backgroundColor: 'transparent', disableAnchor: true,
+                                      pixelOffset: new naver.maps.Point(0, -6) });
+    bindLongPress();
+  }
+  // 동네를 바꾸면(center 값이 바뀌면) 그 동네로 이동, 아니면 보던 화면 유지
+  const viewKey = JSON.stringify([a.center, a.zoom]);
+  if (viewKey !== lastView) {
+    map.setCenter(new naver.maps.LatLng(a.center[0], a.center[1]));
+    if (a.zoom) map.setZoom(a.zoom);
+    lastView = viewKey;
+  }
+  overlays.forEach(o => o.setMap(null)); overlays = [];
+  (a.points || []).forEach(p => { const m = dot(p, p.size || 14, p.color || '#3366cc', p.label || '', p.ring ? '3px solid #111' : null); withTip(m, p.tip); overlays.push(m); });
+  drawPick(a.pick, a.radius || 500, a.comps);
+  setHeight(a.height);
+}
+
+window.addEventListener('message', function (ev) {
+  const d = ev.data;
+  if (!d || d.type !== 'streamlit:render') return;
+  args = d.args;
+  loadNaver(args.client_id, render);
+});
+send('streamlit:componentReady', { apiVersion: 1 });
+</script>
+</body></html>
