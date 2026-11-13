@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src import scoring, ui
+from src import sbiz, scoring, ui
 
 st.set_page_config(page_title="동네 리포트", page_icon="🏘️", layout="wide")
 ui.require_login()
@@ -38,6 +38,63 @@ if row is not None:
         st.markdown("  \n".join(row["reasons"]))
     rl = ui.rent_line(row)
     st.caption(rl if rl else "💰 임대료: 한국부동산원 조사 상권이 아니라 제공되지 않음 · 주변 매물 시세로 확인해 주세요")
+
+# ---------------- 소상공인365로 본 이 동네 (유동인구 구성·매출 추이·해설)
+sd, sc = sbiz.detail(region, dong_nm), sbiz.city_detail(region)
+cafe_sales = sbiz.sales_series(region, dong_nm, "카페")
+if sd is not None or len(cafe_sales):
+    st.divider()
+    st.subheader("📊 유동인구 구성 · 카페 매출 (소상공인365)")
+    lines = sbiz.commentary(region, dong_nm, "카페")
+    if lines:
+        st.info("  \n".join(f"· {x}" for x in lines))
+    city_nm = sbiz.CITY.get(region, "시")
+    colors = {"here": "#E45756", "city": "#BAB0AC"}
+
+    def _pair_bar(labels, here, city, title, height=230):
+        fig = go.Figure()
+        fig.add_bar(x=labels, y=here, name=dong_nm, marker_color=colors["here"],
+                    hovertemplate="%{x} %{y:.1f}%<extra>" + dong_nm + "</extra>")
+        if city is not None:
+            fig.add_bar(x=labels, y=city, name=f"{city_nm} 평균", marker_color=colors["city"],
+                        hovertemplate="%{x} %{y:.1f}%<extra>" + city_nm + "</extra>")
+        fig.update_layout(barmode="group", height=height, margin=dict(l=10, r=10, t=30, b=10),
+                          title=dict(text=title, font=dict(size=14), x=0), yaxis=dict(ticksuffix="%"),
+                          legend=dict(orientation="h", y=1.18, x=1, xanchor="right"), bargap=0.25)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    if sd is not None:
+        g1, g2 = st.columns(2)
+        with g1:
+            _pair_bar(sbiz.HOUR, sd["hour"], sc["hour"] if sc else None, "시간대별 유동인구 비중")
+        with g2:
+            _pair_bar(sbiz.AGE, sd["age"], sc["age"] if sc else None, "연령대별 유동인구 비중")
+        g3, g4 = st.columns(2)
+        with g3:
+            _pair_bar(sbiz.WEEK, sd["weekday"], sc["weekday"] if sc else None, "요일별 유동인구 비중", 210)
+        with g4:
+            ui.stat_tiles([("일평균 유동인구", f"{sd['total']:,}명", ""),
+                           ("남 : 여", f"{sd['sex'][0]:.0f} : {sd['sex'][1]:.0f}", ""),
+                           ("10–20대", f"{sd['age'][0] + sd['age'][1]:.0f}%",
+                            f"{city_nm} {sc['age'][0] + sc['age'][1]:.0f}%" if sc else ""),
+                           ("14–18시 비중", f"{sd['hour'][3]:.0f}%", f"{city_nm} {sc['hour'][3]:.0f}%" if sc else "")])
+    if len(cafe_sales):
+        city_sales = sbiz.sales_series(region, city_nm, "카페")
+        fig = go.Figure()
+        fig.add_scatter(x=cafe_sales.index, y=cafe_sales.values, name=dong_nm, mode="lines+markers",
+                        line=dict(color=colors["here"], width=2.5), connectgaps=True,
+                        hovertemplate="%{x} %{y:,.0f}만원<extra>" + dong_nm + "</extra>")
+        if len(city_sales):
+            fig.add_scatter(x=city_sales.index, y=city_sales.values, name=f"{city_nm} 평균", mode="lines",
+                            line=dict(color="#888", width=2, dash="dot"),
+                            hovertemplate="%{x} %{y:,.0f}만원<extra>" + city_nm + "</extra>")
+        fig.update_layout(height=260, margin=dict(l=10, r=10, t=30, b=10), hovermode="x unified",
+                          xaxis=dict(type="category", tickangle=0, nticks=7), yaxis=dict(tickformat=","),
+                          title=dict(text="카페 점포당 월평균 매출 (만원)", font=dict(size=14), x=0),
+                          legend=dict(orientation="h", y=1.18, x=1, xanchor="right"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption(f"출처: 소상공인365 빅데이터 상권분석 ({sbiz.period()} 기준, 통신·카드 자료 기반 추정) · "
+               "값은 config/sbiz_floating.yaml에 옮겨 적은 것이라 분기마다 손으로 갱신합니다.")
 
 st.divider()
 left, right = st.columns(2)
@@ -116,18 +173,18 @@ with fc1:
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             st.caption(f"기준 {latest[:4]}.{latest[4:]} · 시간대코드는 경기데이터드림 정의(TZ01부터 이른 시간대 순)")
     sb, sb_period = scoring.sbiz_floating(region)
-    if dong_nm in sb:
+    if dong_nm in sb and sd is None:
         ranked = sorted(sb.values(), reverse=True)
-        st.metric("일평균 유동인구 (소상공인365)", f"{sb[dong_nm]:,}명",
-                  help="통신 위치 자료로 추정한 값을 소상공인365 화면에서 옮겨 적은 것 (config/sbiz_floating.yaml)")
-        st.caption(f"조사한 시내 동네 {len(sb)}곳 중 {ranked.index(sb[dong_nm]) + 1}위 · {sb_period} 기준")
+        st.metric("일평균 유동인구 (소상공인365)", f"{sb[dong_nm]:,}명")
+        st.caption(f"조사한 동네 {len(sb)}곳 중 {ranked.index(sb[dong_nm]) + 1}위 · {sb_period} 기준")
     bus = data.get("busstops")
     if bus is not None and len(bus):
         n_bus = int((scoring.attach_dong_key(bus, scoring.dong_master(data)) == dong_cd).sum())
         st.metric("동네 안 버스정류장", f"{n_bus}곳", help="동네 단위 유동인구는 무료로 공개되지 않아, 지나다니는 사람의 대리 지표로 씁니다.")
     else:
         st.metric("버스정류장", scoring.NOT_PROVIDED)
-    st.caption("시간대별 유동인구는 [소상공인365](https://bigdata.sbiz.or.kr) › 빅데이터 상권분석에서 이 동네를 골라 확인할 수 있습니다 (무료 가입).")
+    if sd is None:
+        st.caption("시간대·연령별 유동인구는 [소상공인365](https://bigdata.sbiz.or.kr) › 빅데이터 상권분석에서 확인할 수 있습니다.")
 with fc2:
     sch = data.get("schools")
     if sch is not None and len(sch):
@@ -142,6 +199,25 @@ with fc2:
 
 # ---------------- 커피·간식 경쟁점
 st.subheader("커피·간식 경쟁점")
+bz_cafe = ["커피숍", "다방", "전통찻집", "떡카페"]
+ages_here = sbiz.business_age(data, dong_cd, bz_cafe)
+ages_city = sbiz.business_age(data, None, bz_cafe)
+if ages_here.sum():
+    share_here = ages_here / ages_here.sum() * 100
+    share_city = ages_city / ages_city.sum() * 100 if ages_city.sum() else None
+    fig = go.Figure()
+    fig.add_bar(x=share_here.index, y=share_here.values, name=dong_nm, marker_color="#8c564b",
+                customdata=ages_here.values, hovertemplate="%{x} %{customdata}곳 (%{y:.0f}%)<extra></extra>")
+    if share_city is not None:
+        fig.add_bar(x=share_city.index, y=share_city.values, name="시 전체", marker_color="#BAB0AC",
+                    hovertemplate="%{x} %{y:.0f}%<extra>시 전체</extra>")
+    fig.update_layout(barmode="group", height=230, margin=dict(l=10, r=10, t=30, b=10), yaxis=dict(ticksuffix="%"),
+                      title=dict(text=f"영업 중인 카페 {int(ages_here.sum())}곳의 업력 (문 연 지 몇 년?)", font=dict(size=14), x=0),
+                      legend=dict(orientation="h", y=1.18, x=1, xanchor="right"))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    old = share_here.get("5년 이상", 0)
+    st.caption(f"5년 넘게 버틴 카페가 {old:.0f}%" + (f" (시 전체 {share_city.get('5년 이상', 0):.0f}%)" if share_city is not None else "")
+               + " — 높을수록 오래 살아남는 동네, '1년 미만'이 높으면 새로 많이 들어오는 동네입니다. (휴게음식점 인허가 기준)")
 groups = {g["name"]: g["scls"] for g in pc["groups"].values()}
 comp = here[here["inds_scls_cd"].isin(sum(groups.values(), []))].copy()
 if comp.empty:

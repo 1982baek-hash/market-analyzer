@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from src import scoring, ui
+from src import sbiz, scoring, ui
 
 st.set_page_config(page_title="입지 찾기", page_icon="🎯", layout="wide")
 ui.require_login()
@@ -87,6 +87,22 @@ with right:
     )
     if len(held):
         st.caption(f"판단 보류 {len(held)}곳: 동종 점포가 3개 미만이거나 개·폐업 이력이 10건 미만이라 점수를 믿기 어려운 동네입니다.")
+
+# ---------------- 상권 비교 (소상공인365에서 옮겨 적은 동네)
+cmp = sbiz.compare_table(region, table if mode != "다른 업종" else None)
+if len(cmp):
+    st.markdown("**동네 비교 — 유동인구·카페 매출** (소상공인365)")
+    st.dataframe(
+        cmp, hide_index=True, use_container_width=True,
+        column_config={
+            "일평균 유동인구(명)": st.column_config.NumberColumn(format="localized"),
+            "카페 월매출(만원)": st.column_config.NumberColumn(format="localized"),
+            "매출 1년 증감 %": st.column_config.NumberColumn(format="%+d%%"),
+            "입지 점수": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d"),
+        },
+    )
+    st.caption(f"소상공인365 상세분석 {sbiz.period()} 기준 (통신·카드 자료 기반 추정) · 카페 월매출은 점포당 평균(가장 최근 달, 일부 동네는 7월 또는 6월 값) · "
+               "자료가 있는 동네만 보입니다. 동네를 고르면 '동네 리포트'에서 시간대·연령 그래프를 볼 수 있어요.")
 
 with st.expander("점수는 이렇게 계산해요"):
     st.markdown(
