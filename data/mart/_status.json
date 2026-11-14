@@ -1,7 +1,7 @@
 {
   "_run": {
-    "failures": 1,
-    "finished_at": "2026-11-13T09:32:25+09:00"
+    "failures": 0,
+    "finished_at": "2026-11-14T08:53:30+09:00"
   },
   "busstops_andong": {
     "base_period": "202611",
@@ -49,14 +49,18 @@
     "status": "SUCCESS"
   },
   "floating_seongnam": {
+    "base_period": "202506",
+    "collected_month": "202611",
     "cycle": "월 1회 확인",
-    "last_checked": "2026-11-13T09:32:25+09:00",
-    "message": "서버 오류 HTTP 502",
+    "file": "floating/seongnam.parquet",
+    "last_checked": "2026-11-14T08:53:30+09:00",
+    "last_updated": "2026-11-14T08:53:30+09:00",
+    "message": "새 자료 저장 (기준 202506, 행정동 50곳)",
     "method": "경기데이터드림 Open API (GitHub Actions)",
     "name": "경기도 유동인구 (경기도 성남시)",
     "region": "seongnam",
-    "rows": 0,
-    "status": "FAIL"
+    "rows": 6600,
+    "status": "SUCCESS"
   },
   "license_general_restaurants_andong": {
     "base_period": "20261113",
