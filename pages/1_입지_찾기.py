@@ -5,6 +5,7 @@ from src import catprof, mystore, pickmap, sbiz, scoring, spot, ui
 
 st.set_page_config(page_title="입지 찾기", page_icon="🎯", layout="wide")
 ui.require_login()
+ui.competitor_alert()
 
 st.title("🎯 입지 찾기")
 st.caption("이 업종, 어느 동네가 좋을까? 같은 시·군 안 동네끼리 비교한 100점 만점 점수입니다.")

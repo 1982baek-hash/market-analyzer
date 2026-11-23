@@ -10,6 +10,7 @@ from src.mart_sync import read_status
 
 st.set_page_config(page_title="데이터 현황", page_icon="🔄", layout="wide")
 ui.require_login()
+ui.competitor_alert()
 
 KST = timezone(timedelta(hours=9))
 REPO = "https://github.com/1982baek-hash/market-analyzer"

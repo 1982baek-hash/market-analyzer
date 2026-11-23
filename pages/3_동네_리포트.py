@@ -8,6 +8,7 @@ from src import sbiz, scoring, ui, univ
 
 st.set_page_config(page_title="동네 리포트", page_icon="🏘️", layout="wide")
 ui.require_login()
+ui.competitor_alert()
 
 region = ui.pick_region()
 data = ui.region_data(region)

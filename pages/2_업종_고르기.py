@@ -5,6 +5,7 @@ from src import catsearch, scoring, ui
 
 st.set_page_config(page_title="업종 고르기", page_icon="🧭", layout="wide")
 ui.require_login()
+ui.competitor_alert()
 
 st.title("🧭 업종 고르기")
 st.caption("이 동네에 뭐가 부족할까? 시 전체와 비교해 이 동네에만 유독 적은 업종(부족)과 몰려 있는 업종(포화)을 찾습니다.")

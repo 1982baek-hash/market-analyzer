@@ -1,4 +1,4 @@
-"""화면 공통: 가족 비밀번호, 지역·동네 선택, 데이터 캐시, 지도."""
+"""화면 공통: 가족 비밀번호, 새 경쟁점 알림 팝업, 지역·동네 선택, 데이터 캐시, 지도."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from src import navermap, scoring
 from src.config_loader import get_api_key
 
 DEFAULT_REGION = "andong"
+ALERT_PAGE = "pages/6_새_경쟁점.py"
+ALERT_POPUP_MAX = 6  # 팝업에 한 번에 보여 줄 가게 수 (나머지는 '자세히 보기'에서)
 
 
 def require_login() -> None:
@@ -34,6 +36,148 @@ def _region_data(region_key: str, signature: str) -> dict:
 
 def region_data(region_key: str) -> dict:
     return _region_data(region_key, scoring.mart_signature())
+
+
+# ---------------------------------------------------------------- 새 경쟁점 알림 (앱을 열 때 뜨는 팝업)
+@st.cache_data(show_spinner=False)
+def _alert_items(signature: str, stores_key: tuple, day: str) -> pd.DataFrame:
+    from src import alerts, mystore
+    return alerts.popup_items(stores=mystore.load_my_stores(), loader=region_data)
+
+
+def alert_items() -> pd.DataFrame:
+    """팝업으로 알릴 새 경쟁점 (수집 자료·내 매장·날짜가 바뀌면 다시 계산)."""
+    from datetime import date
+
+    from src import mystore
+    stores_key = tuple((str(s.get("name")), s.get("region"), round(s["lat"], 5), round(s["lon"], 5))
+                       for s in mystore.load_my_stores())
+    return _alert_items(scoring.mart_signature(), stores_key, date.today().isoformat())
+
+
+def _alert_command(**cmd) -> None:
+    """다음 화면 그리기 때 브라우저 저장소(확인한 알림 목록)에 반영할 명령을 걸어 둡니다."""
+    import uuid
+    st.session_state["_alert_cmd"] = {"nonce": uuid.uuid4().hex, **cmd}
+
+
+def alert_reset() -> None:
+    """이 기기의 '확인한 알림' 기록을 지워 팝업이 다시 뜨게 합니다 ('새 경쟁점' 화면의 버튼용)."""
+    _alert_command(reset=True)
+    st.session_state.pop("_alert_open", None)
+    st.session_state.pop("_alert_done", None)
+
+
+def _alert_close(ack: bool, ids: list | None = None) -> None:
+    """팝업을 닫습니다. ack=True면 그 가게들을 이 기기에서 다시 알리지 않습니다."""
+    ss = st.session_state
+    open_ids = ss.pop("_alert_open", None)
+    ids = ids if ids is not None else (open_ids or [])
+    ss["_alert_done"] = True  # 이번 접속에서는 다시 띄우지 않음
+    if ack and ids:
+        _alert_command(ack=list(ids))
+
+
+def _alert_body(items: pd.DataFrame) -> None:
+    import html as _html
+
+    from src import alerts
+    cfg = alerts.settings()
+    regions = scoring.load_regions()
+    ids = list(items["mgmt_no"])
+    has_store = items["near_name"].notna().any()
+    where = (f"내 매장 반경 {int(cfg['radius_m']):,}m 안" if has_store
+             else " · ".join(regions[r]["name"].split()[-1] for r in items["region"].unique() if r in regions))
+    st.markdown(f"**{where}**에 최근 **{int(cfg['days'])}일** 사이 새로 영업 신고한 카페·간식점이 "
+                f"**{len(items)}곳** 있어요.")
+    lines = []
+    for _, r in items.head(ALERT_POPUP_MAX).iterrows():
+        dist = alerts.dist_text(r)
+        info = " · ".join(x for x in (alerts.group_label(r), f"{r['open_dt'].month}월 {r['open_dt'].day}일 신고", r["adong_nm"]) if x)
+        name = _html.escape(str(r["biz_name"])).replace("[", "(").replace("]", ")")
+        lines.append(f"- **{name}**  \n  {info}" + (f"  \n  📍 {_html.escape(dist)}" if dist else "")
+                     + f"  \n  <small>{_html.escape(str(r['addr']))}</small>")
+    st.markdown("\n".join(lines), unsafe_allow_html=True)
+    if len(items) > ALERT_POPUP_MAX:
+        st.caption(f"외 {len(items) - ALERT_POPUP_MAX}곳은 **자세히 보기**에서 볼 수 있어요.")
+    c1, c2 = st.columns(2)
+    if c1.button("확인했어요", type="primary", use_container_width=True, key="_alert_ok"):
+        _alert_close(True, ids)
+        st.rerun()
+    if c2.button("자세히 보기", use_container_width=True, key="_alert_more"):
+        _alert_close(True, ids)
+        st.switch_page(ALERT_PAGE)
+    st.caption("**확인했어요**를 누르면 이 가게들은 이 기기에서 다시 알리지 않아요. "
+               "그냥 닫으면 다음에 앱을 열 때 다시 알려 드려요."
+               + ("" if has_store else " 내 매장 위치를 저장해 두면 가게 주변에 생긴 곳만 알려 드려요."))
+
+
+def competitor_alert() -> None:
+    """새 경쟁점이 생겼으면 팝업으로 알립니다. 모든 화면에서 require_login() 바로 다음에 부릅니다.
+
+    확인한 가게는 브라우저(localStorage)에 적어 두어, 같은 기기에서는 한 번만 알립니다.
+    """
+    import inspect
+
+    from src import alerts, seenstore
+    ss = st.session_state
+    try:
+        if not alerts.settings().get("enabled", True):
+            return
+        cmd = ss.get("_alert_cmd")
+        open_ids = ss.get("_alert_open")
+        # 이번 접속에서 이미 알렸거나 알릴 가게가 없으면 아무것도 하지 않는다.
+        # (브라우저 저장소를 읽으면 화면을 한 번 더 그리게 되므로 꼭 필요할 때만 읽는다)
+        if not cmd and open_ids is None and ss.get("_alert_done"):
+            return
+        items = alert_items()
+        if not cmd and items.empty:
+            return
+        seen = seenstore.sync(cmd)  # 브라우저가 대답하기 전(첫 실행)에는 None
+        if seen is None:
+            return
+        if cmd and seen.get("applied") == cmd["nonce"]:
+            ss.pop("_alert_cmd", None)
+        elif cmd:
+            return  # 방금 누른 '확인'·'다시 보기'가 브라우저에 반영된 뒤에 판단
+        if open_ids is None:
+            if ss.get("_alert_done"):
+                return
+            unseen = items[~items["mgmt_no"].isin(set(seen.get("seen") or []))]
+            if unseen.empty:
+                ss["_alert_done"] = True  # 모두 확인한 가게들: 이번 접속에서는 더 확인하지 않음
+                return
+            open_ids = ss["_alert_open"] = list(unseen["mgmt_no"])
+        show = items[items["mgmt_no"].isin(open_ids)]
+        if show.empty:  # 띄워 둔 사이 자료가 바뀌어 대상이 없어진 경우
+            ss.pop("_alert_open", None)
+            return
+
+        dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+        title = f"🆕 새 경쟁점 {len(show)}곳"
+        if dialog is None:  # 아주 오래된 Streamlit: 팝업 대신 화면 맨 위 안내 상자
+            ss.pop("_alert_open", None)
+            ss["_alert_done"] = True
+            st.warning(f"**{title}** — 왼쪽 메뉴의 **새 경쟁점** 화면에서 확인해 주세요.")
+            return
+        kwargs = {}
+        if "on_dismiss" in inspect.signature(dialog).parameters:
+            # X·바깥을 눌러 닫으면 이번 접속에서만 닫음 (다음에 앱을 열면 다시 알림).
+            # 닫기 전까지는 화면이 다시 그려져도 _alert_open 덕분에 팝업이 계속 떠 있다.
+            kwargs["on_dismiss"] = lambda: _alert_close(False)
+        else:
+            # 닫힘을 알 수 없는 예전 버전: 한 번 띄우고 나면 이번 접속에서는 다시 띄우지 않음
+            ss.pop("_alert_open", None)
+            ss["_alert_done"] = True
+
+        def _competitor_alert_dialog():
+            _alert_body(show)
+
+        dialog(title, **kwargs)(_competitor_alert_dialog)()
+    except Exception as e:  # noqa: BLE001  알림이 고장 나도 본 화면은 떠야 한다
+        print(f"[새 경쟁점 알림 오류] {type(e).__name__}: {e}", flush=True)
+        ss.pop("_alert_open", None)
+        ss["_alert_done"] = True
 
 
 @st.cache_data(show_spinner="점수를 계산하는 중입니다...")

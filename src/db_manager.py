@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 import duckdb
 import pandas as pd
@@ -105,10 +106,23 @@ class DatabaseManager:
         self._init_tables()
 
     def get_connection(self, read_only: bool = False):
-        try:
-            return duckdb.connect(self.db_path, read_only=read_only)
-        except Exception:
-            return duckdb.connect(self.db_path)
+        # 한 프로그램 안에서 '읽기 전용' 연결과 '쓰기' 연결이 동시에 열려 있으면 DuckDB가 새 연결을 거부한다
+        # (두 사람이 같은 순간에 접속했을 때 등). 다른 쪽 연결은 금방 닫히므로 잠깐 기다렸다 다시 시도한다.
+        last_error = None
+        for _ in range(50):  # 최대 약 5초
+            try:
+                return duckdb.connect(self.db_path, read_only=read_only)
+            except duckdb.ConnectionException as e:
+                last_error = e
+                if read_only:
+                    try:
+                        return duckdb.connect(self.db_path)
+                    except duckdb.ConnectionException as e2:
+                        last_error = e2
+                time.sleep(0.1)
+            except Exception:
+                return duckdb.connect(self.db_path)
+        raise last_error
 
     def _init_tables(self):
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)

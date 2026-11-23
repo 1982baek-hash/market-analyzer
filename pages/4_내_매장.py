@@ -9,6 +9,7 @@ from src import mystore, navermap, sbiz, scoring, ui
 
 st.set_page_config(page_title="내 매장", page_icon="📍", layout="wide")
 ui.require_login()
+ui.competitor_alert()
 
 region = ui.pick_region()
 regions = scoring.load_regions()

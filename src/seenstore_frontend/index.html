@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;height:0;overflow:hidden}</style></head><body>
+<script>
+// ---- Streamlit 컴포넌트 통신 (streamlit-component-lib 없이 직접)
+function send(type, data) { window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*"); }
+
+const KEEP_DAYS = 400;      // 이보다 오래된 확인 기록은 지움
+let memory = {};            // localStorage를 못 쓰는 브라우저(사생활 보호 모드 등)에서는 이번 접속 동안만 기억
+let lastSent = null;
+
+function readStore(key) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const obj = raw ? JSON.parse(raw) : {};
+    return { data: (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {}, ok: true };
+  } catch (e) { return { data: memory, ok: false }; }
+}
+
+function writeStore(key, data) {
+  memory = data;
+  try { window.localStorage.setItem(key, JSON.stringify(data)); return true; } catch (e) { return false; }
+}
+
+window.addEventListener('message', function (ev) {
+  const d = ev.data;
+  if (!d || d.type !== 'streamlit:render') return;
+  const a = d.args || {};
+  const key = a.storage_key || 'seen_alerts';
+  const st = readStore(key);
+  let data = st.data, ok = st.ok, applied = null;
+  const now = Date.now();
+
+  // 같은 명령(nonce)을 두 번 반영하지 않도록 반영한 번호를 함께 적어 둔다
+  if (a.nonce !== null && a.nonce !== undefined) {
+    if (String(data.__nonce) !== String(a.nonce)) {
+      if (a.reset) data = {};
+      (a.ack || []).forEach(function (id) { data[String(id)] = now; });
+      data.__nonce = String(a.nonce);
+      Object.keys(data).forEach(function (k) {
+        if (k !== '__nonce' && now - Number(data[k]) > KEEP_DAYS * 86400000) delete data[k];
+      });
+      ok = writeStore(key, data) && ok;
+    }
+    applied = a.nonce;
+  }
+
+  const seen = Object.keys(data).filter(function (k) { return k !== '__nonce'; }).sort();
+  const value = { seen: seen, applied: applied, storage: ok };
+  const text = JSON.stringify(value);
+  if (text !== lastSent) {   // 값이 바뀌었을 때만 보내야 화면이 끝없이 다시 그려지지 않는다
+    lastSent = text;
+    send('streamlit:setComponentValue', { value: value, dataType: 'json' });
+  }
+  send('streamlit:setFrameHeight', { height: 0 });
+});
+send('streamlit:componentReady', { apiVersion: 1 });
+</script>
+</body></html>
