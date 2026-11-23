@@ -1,7 +1,7 @@
-"""새 경쟁점 알림 계산: 최근 N일 안에 내 매장 주변에 새로 영업 신고(인허가)된, 점심을 대신할 수 있는 가게.
+"""새 경쟁점 알림 계산: 최근 N일 안에 내 매장 주변에 새로 영업 신고(인허가)된, 식사를 대신할 수 있는 가게.
 
-- 경쟁점 = 점심 한 끼를 대신할 수 있는 곳 모두
-  · 식당: 일반음식점 인허가 전체 (술집 업태는 제외 — config alerts.lunch_exclude_bzstat)
+- 경쟁점 = 한 끼 식사(아침·점심·저녁·야식)를 대신할 수 있는 곳 모두
+  · 식당: 일반음식점 인허가 전체 — 치킨·호프 포함, 술이 중심인 업태만 제외 (config alerts.meal_exclude_bzstat)
   · 카페·간식점·편의점: 휴게음식점 인허가 (백화점·역 구내·고속도로 휴게소 등은 제외)
 - 자료: data/mart/licenses/ (매주 월요일 새벽 자동 갱신)
 - 축제·야시장 임시 매장은 목록에는 보여 주되 팝업 알림에서는 뺍니다.
@@ -23,8 +23,8 @@ DEFAULTS = {
     "days": 30,          # 최근 며칠 안에 영업 신고된 가게를 '새 경쟁점'으로 볼지
     "radius_m": 1000,    # 내 매장에서 이 거리 안에 생긴 곳만 '경쟁점'으로 보고 팝업으로 알림
     "temp_keywords": ["페스티벌", "축제", "야시장", "행사", "박람회", "어울림마당", "플리마켓", "부스", "한시적"],
-    # 일반음식점 중 점심을 대신하기 어려운 업태 (술집·공연·출장 등)
-    "lunch_exclude_bzstat": ["호프/통닭", "정종/대포집/소주방", "라이브카페", "감성주점", "키즈카페", "출장조리"],
+    # 일반음식점 중 식사를 대신하기 어려운 업태 (술이 중심인 곳·놀이시설·매장 없는 출장조리)
+    "meal_exclude_bzstat": ["정종/대포집/소주방", "라이브카페", "감성주점", "키즈카페", "출장조리"],
 }
 
 GROUP_LABEL = {"meal": "식당", "cafe": "카페", "snack": "간식점", "conv": "편의점"}
@@ -33,8 +33,10 @@ GROUP_ORDER = ["meal", "cafe", "snack", "conv"]
 CONV_NAMES = ["씨유", "CU ", "지에스25", "지에스(GS)25", "GS25", "세븐일레븐", "이마트24", "미니스톱"]
 # 일반음식점 중 카페로 볼 업태
 GENERAL_CAFE = ["까페", "전통찻집"]
-# 상가정보(지금 있는 가게 수) 기준: 음식 대분류 중 주점(I211) 제외 + 편의점(G20405)
-STORE_BAR_MCLS = "I211"
+# 상가정보(지금 있는 가게 수) 기준: 음식 대분류 중 술이 중심인 주점 제외 + 편의점(G20405)
+# (주점 중 생맥주 전문(I21103, 호프·치킨)은 식사 경쟁점으로 셈)
+STORE_BAR_SCLS = ["I21101", "I21102", "I21104"]
+STORE_MEAL_SCLS = ["I21006", "I21103"]  # 치킨, 생맥주 전문 → 식당으로 셈
 STORE_CONV_SCLS = "G20405"
 STORE_CAFE_SCLS = "I21201"
 
@@ -72,14 +74,14 @@ def _classify(data: dict, cfg: dict) -> pd.DataFrame:
     if gr is not None and not gr.empty:
         d = gr.copy()
         d["group"] = "meal"
-        d.loc[d["bzstat_nm"].isin(s["lunch_exclude_bzstat"]), "group"] = None
+        d.loc[d["bzstat_nm"].isin(s["meal_exclude_bzstat"]), "group"] = None
         d.loc[d["bzstat_nm"].isin(GENERAL_CAFE), "group"] = "cafe"
         parts.append(d)
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 def new_competitors(data: dict, cfg: dict, days: int, today: date | None = None) -> pd.DataFrame:
-    """한 지역에서 최근 days일 안에 새로 영업 신고된(지금 영업 중인) 점심 경쟁점. 최근 개업 순."""
+    """한 지역에서 최근 days일 안에 새로 영업 신고된(지금 영업 중인) 식사 경쟁점. 최근 개업 순."""
     lic = _classify(data, cfg)
     if lic.empty:
         return _empty()
@@ -198,16 +200,16 @@ def group_label(row) -> str:
 
 
 def existing_near(data: dict, lat: float, lon: float, radius: int) -> dict:
-    """반경 안에 지금 있는 점심 경쟁점 수 (상가정보 최신 스냅샷). {묶음: 곳 수}"""
+    """반경 안에 지금 있는 식사 경쟁점 수 (상가정보 최신 스냅샷). {묶음: 곳 수}"""
     st = data.get("stores")
     out = {g: 0 for g in GROUP_ORDER}
     if st is None or st.empty:
         return out
     d = st.dropna(subset=["lat", "lon"])
     d = d[mystore.distance_m(lat, lon, d["lat"], d["lon"]) <= radius]
-    food = d["inds_lcls_nm"].fillna("").str.contains("음식") & d["inds_mcls_cd"].ne(STORE_BAR_MCLS)
+    food = d["inds_lcls_nm"].fillna("").str.contains("음식") & ~d["inds_scls_cd"].isin(STORE_BAR_SCLS)
     cafe = d["inds_scls_cd"].eq(STORE_CAFE_SCLS)
-    snack = d["inds_mcls_cd"].eq("I210")
+    snack = d["inds_mcls_cd"].eq("I210") & ~d["inds_scls_cd"].isin(STORE_MEAL_SCLS)
     out["cafe"] = int(cafe.sum())
     out["snack"] = int((food & snack).sum())
     out["meal"] = int((food & ~cafe & ~snack).sum())
