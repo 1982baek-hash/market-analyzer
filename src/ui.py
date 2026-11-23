@@ -60,12 +60,12 @@ def alert_link_label() -> str:
     from src import alerts, mystore
     stores = mystore.load_my_stores()
     if not stores:
-        return "**새 경쟁점** — 내 매장 위치를 저장하면 주변에 새로 생긴 카페·간식점을 알려 드려요"
+        return "**새 경쟁점** — 내 매장 위치를 저장하면 주변에 새로 생긴 카페·간식점·분식집을 알려 드려요"
     names, n = alerts.store_names(stores), len(alert_items())
     cfg = alerts.settings()
     if n:
-        return f"**새 경쟁점** — {names} 주변에 최근 {int(cfg['days'])}일 사이 새로 생긴 카페·간식점 {n}곳"
-    return f"**새 경쟁점** — {names} 주변에 최근 새로 생긴 카페·간식점 없음 (눌러서 자세히 보기)"
+        return f"**새 경쟁점** — {names} 주변에 최근 {int(cfg['days'])}일 사이 새로 생긴 카페·간식점·분식집 {n}곳"
+    return f"**새 경쟁점** — {names} 주변에 최근 새로 생긴 카페·간식점·분식집 없음 (눌러서 자세히 보기)"
 
 
 def _alert_command(**cmd) -> None:
@@ -102,7 +102,7 @@ def _alert_body(items: pd.DataFrame) -> None:
         from src import mystore
         names = [alerts.store_names(mystore.load_my_stores())]
     where = f"{' · '.join(names)} 반경 {int(cfg['radius_m']):,}m 안"
-    st.markdown(f"**{where}**에 최근 **{int(cfg['days'])}일** 사이 새로 영업 신고한 카페·간식점이 "
+    st.markdown(f"**{where}**에 최근 **{int(cfg['days'])}일** 사이 새로 영업 신고한 카페·간식점·분식집이 "
                 f"**{len(items)}곳** 있어요.")
     lines = []
     for _, r in items.head(ALERT_POPUP_MAX).iterrows():

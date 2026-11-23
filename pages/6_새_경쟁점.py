@@ -1,4 +1,4 @@
-"""새 경쟁점 — 내 매장 주변에 최근 새로 영업 신고한 카페·간식점 (앱을 열 때 뜨는 알림 팝업의 전체 목록)."""
+"""새 경쟁점 — 내 매장 주변에 최근 새로 영업 신고한 카페·간식점·분식집 (앱을 열 때 뜨는 알림 팝업의 전체 목록)."""
 
 import pandas as pd
 import streamlit as st
@@ -29,7 +29,7 @@ elif len(stores) > 1:
 base_name = str(base.get("name") or "내 매장") if base else ""
 
 if base:
-    st.caption(f"**{base_name}** 주변에 최근 새로 영업 신고(인허가)한 카페·간식점입니다. "
+    st.caption(f"**{base_name}** 주변에 최근 새로 영업 신고(인허가)한 카페·간식점·분식집입니다. "
                "신고한 날 기준이라 실제로 문을 여는 날과 며칠 차이 날 수 있어요.")
 else:
     others = [regions[s["region"]]["name"] for s in mystore.load_my_stores() if s.get("region") in regions]
@@ -50,7 +50,7 @@ with cols[0]:
     days = st.radio("기간", day_opts, index=day_opts.index(int(conf["days"])),
                     format_func=lambda d: "최근 1년" if d == 365 else f"최근 {d}일", horizontal=True)
 with cols[1]:
-    group_opts = {"both": "카페 + 간식점", "cafe": "카페만", "snack": "간식점만"}
+    group_opts = {"both": "전체", "cafe": "카페", "snack": "간식점", "bunsik": "분식집"}
     gsel = st.radio("볼 업종", list(group_opts), format_func=group_opts.get, horizontal=True)
 radius = ALL
 if base:
@@ -75,7 +75,8 @@ where = f"{city} 전체" if (not base or radius == ALL) else f"{base_name} 반�
 tiles = [
     ("새로 연 곳", f"{len(real)}곳", f"{where} · {period}"),
     ("카페", f"{int((real['group'] == 'cafe').sum())}곳", ""),
-    ("간식점", f"{int((real['group'] == 'snack').sum())}곳", "빵·떡·토스트·분식·아이스크림 등"),
+    ("간식점", f"{int((real['group'] == 'snack').sum())}곳", "빵·떡·토스트·아이스크림 등"),
+    ("분식집", f"{int((real['group'] == 'bunsik').sum())}곳", "일반음식점 중 업태 '분식'"),
     ("저가 커피 브랜드", f"{int(real['lowcost'].sum())}곳", ""),
 ]
 if base and radius != ALL:
@@ -86,10 +87,10 @@ if base and radius != ALL:
 ui.stat_tiles(tiles)
 
 if items.empty:
-    st.success(f"**{where}** 안에는 {period} 동안 새로 영업 신고한 카페·간식점이 없습니다.")
+    st.success(f"**{where}** 안에는 {period} 동안 새로 영업 신고한 카페·간식점·분식집이 없습니다.")
 else:
     # ------------------------------------------------------------ 지도
-    colors = {"cafe": "#8B5A2B", "snack": "#E4572E"}
+    colors = {"cafe": "#8B5A2B", "snack": "#E4572E", "bunsik": "#7B3FA0"}
     pts = []
     if base:
         pts.append({"lat": base["lat"], "lon": base["lon"], "color": "#1f6feb", "size": 20,
@@ -113,7 +114,7 @@ else:
             fmap.fit_bounds([[min(p["lat"] for p in pts), min(p["lon"] for p in pts)],
                              [max(p["lat"] for p in pts), max(p["lon"] for p in pts)]], padding=(30, 30))
         st_folium(fmap, height=420, use_container_width=True, returned_objects=[])
-    legend = " · ".join(f"<span style='color:{colors[g]}'>●</span> {mystore.GROUP_LABEL[g]}" for g in colors)
+    legend = " · ".join(f"<span style='color:{colors[g]}'>●</span> {alerts.GROUP_LABEL[g]}" for g in colors)
     st.markdown((f"<span style='color:#1f6feb'>●</span> {base_name} · " if base else "") + legend, unsafe_allow_html=True)
 
     # ------------------------------------------------------------ 목록
@@ -146,10 +147,11 @@ with st.expander("🔔 알림 팝업은 이렇게 뜹니다"):
     else:
         target = "저장된 내 매장이 없어 **지금은 알림이 뜨지 않습니다.** 내 매장 위치를 저장하면 그 주변에 생긴 곳만 알립니다."
     st.markdown(
-        f"- 앱을 열었을 때, 최근 **{int(conf['days'])}일** 안에 새로 영업 신고한 카페·간식점이 매장 가까이에 있으면 화면 가운데에 팝업이 뜹니다.\n"
+        f"- 앱을 열었을 때, 최근 **{int(conf['days'])}일** 안에 새로 영업 신고한 카페·간식점·분식집이 매장 가까이에 있으면 화면 가운데에 팝업이 뜹니다.\n"
         f"- 알리는 범위: {target}\n"
         "- 팝업에서 **확인했어요**를 누른 가게는 그 휴대폰·PC에서 다시 알리지 않습니다. 기기마다 따로 기억합니다.\n"
         "- 인허가 자료는 **매주 월요일 새벽**에 새로 받으므로, 새 가게는 보통 그 주 월요일 이후에 알림으로 나옵니다.\n"
+        "- 분식집은 일반음식점으로 신고하면서 업태를 '분식'으로 적은 곳입니다. 김밥·떡볶이를 팔아도 '한식'으로 신고한 곳은 빠질 수 있습니다.\n"
         "- 편의점, 백화점 입점 매장, 축제·야시장 임시 매장은 알림에서 뺍니다.\n"
         "- 기간·거리는 `config/business_types.yaml`의 `alerts` 항목에서 바꿀 수 있습니다.")
     if st.button("이 기기에서 알림 팝업 다시 보기"):

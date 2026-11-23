@@ -1,7 +1,7 @@
 """새 경쟁점 알림 계산: 최근 N일 안에 새로 영업 신고(인허가)된 카페·간식점.
 
-- 자료: 휴게음식점 인허가 (data/mart/licenses/rest_cafes_{지역}.parquet · 매주 월요일 새벽 자동 갱신)
-- '새 경쟁점' = 인허가일이 최근 N일 안이고 지금 영업 중인 카페·간식점 (편의점·백화점 입점 매장 등은 제외)
+- 자료: 휴게음식점 인허가 + 일반음식점 인허가 중 '분식' (data/mart/licenses/ · 매주 월요일 새벽 자동 갱신)
+- '새 경쟁점' = 인허가일이 최근 N일 안이고 지금 영업 중인 카페·간식점·분식집 (편의점·백화점 입점 매장 등은 제외)
 - 축제·야시장 임시 매장은 목록에는 보여 주되 팝업 알림에서는 뺍니다.
 - 팝업은 저장된 내 매장(Streamlit Secrets [[my_stores]] 또는 config/my_stores.yaml)에서
   가까운 곳만 알립니다. 멀리 떨어진 동네의 가게는 경쟁점이 아니므로, 내 매장이 없으면 알리지 않습니다.
@@ -39,18 +39,38 @@ def _empty() -> pd.DataFrame:
     return pd.DataFrame(columns=COLS)
 
 
+GROUP_LABEL = {"cafe": "카페", "snack": "간식점", "bunsik": "분식집"}
+# 일반음식점 인허가 중 경쟁점으로 볼 업태 (핫도그·분식 매장과 겹치는 곳)
+GENERAL_BUNSIK = ["분식"]
+
+
 def new_competitors(data: dict, cfg: dict, days: int, today: date | None = None) -> pd.DataFrame:
-    """한 지역에서 최근 days일 안에 새로 영업 신고된(지금 영업 중인) 카페·간식점. 최근 개업 순."""
-    lic = (data.get("licenses") or {}).get("rest_cafes")
-    if lic is None or lic.empty:
+    """한 지역에서 최근 days일 안에 새로 영업 신고된(지금 영업 중인) 카페·간식점·분식집. 최근 개업 순.
+
+    - 카페·간식점: 휴게음식점 인허가
+    - 분식집: 일반음식점 인허가 중 업태가 '분식'인 곳
+    """
+    lics = data.get("licenses") or {}
+    parts = []
+    rc = lics.get("rest_cafes")
+    if rc is not None and not rc.empty:
+        d = rc.copy()
+        d["group"] = None
+        for g, names in mystore.LICENSE_GROUPS.items():
+            d.loc[d["bzstat_nm"].isin(names), "group"] = g
+        parts.append(d)
+    gr = lics.get("general_restaurants")
+    if gr is not None and not gr.empty:
+        d = gr[gr["bzstat_nm"].isin(GENERAL_BUNSIK)].copy()
+        d["group"] = "bunsik"
+        parts.append(d)
+    if not parts:
         return _empty()
+    lic = pd.concat(parts, ignore_index=True)
     s = settings(cfg)
     today = pd.Timestamp(today or date.today()).normalize()
     since = today - pd.Timedelta(days=int(days))
-    df = lic.copy()
-    df["group"] = None
-    for g, names in mystore.LICENSE_GROUPS.items():
-        df.loc[df["bzstat_nm"].isin(names), "group"] = g
+    df = lic
     df["open_dt"] = scoring._to_date(df["open_date"])
     df = df[df["group"].notna() & df["status_cd"].eq("01") & (df["open_dt"] > since) & (df["open_dt"] <= today)].copy()
     if df.empty:
@@ -128,7 +148,7 @@ def store_names(stores: list[dict]) -> str:
 
 def group_label(row) -> str:
     """'카페 · 저가 커피' 같은 짧은 설명."""
-    label = mystore.GROUP_LABEL.get(row["group"], "")
+    label = GROUP_LABEL.get(row["group"], "")
     if row.get("lowcost"):
         label += " · 저가 커피 브랜드"
     if row.get("temporary"):
