@@ -3,8 +3,8 @@
 - 자료: 휴게음식점 인허가 (data/mart/licenses/rest_cafes_{지역}.parquet · 매주 월요일 새벽 자동 갱신)
 - '새 경쟁점' = 인허가일이 최근 N일 안이고 지금 영업 중인 카페·간식점 (편의점·백화점 입점 매장 등은 제외)
 - 축제·야시장 임시 매장은 목록에는 보여 주되 팝업 알림에서는 뺍니다.
-- 저장된 내 매장(Streamlit Secrets [[my_stores]] 또는 config/my_stores.yaml)이 있으면
-  그 가게에서 가까운 곳만 팝업으로 알리고, 없으면 설정한 지역 전체를 알립니다.
+- 팝업은 저장된 내 매장(Streamlit Secrets [[my_stores]] 또는 config/my_stores.yaml)에서
+  가까운 곳만 알립니다. 멀리 떨어진 동네의 가게는 경쟁점이 아니므로, 내 매장이 없으면 알리지 않습니다.
 """
 
 from __future__ import annotations
@@ -19,8 +19,7 @@ from src import mystore, scoring
 DEFAULTS = {
     "enabled": True,
     "days": 30,          # 최근 며칠 안에 영업 신고된 가게를 '새 경쟁점'으로 볼지
-    "radius_m": 1000,    # 저장된 내 매장이 있으면 이 거리 안에 생긴 곳만 팝업으로 알림
-    "regions": ["andong"],  # 저장된 내 매장이 없을 때 알릴 지역
+    "radius_m": 1000,    # 내 매장에서 이 거리 안에 생긴 곳만 '경쟁점'으로 보고 팝업으로 알림
     "temp_keywords": ["페스티벌", "축제", "야시장", "행사", "박람회", "어울림마당", "플리마켓"],
     # 편의점이 '기타 휴게음식점'으로 신고되는 일이 있어 상호로 한 번 더 거른다
     "exclude_keywords": ["씨유", "CU ", "지에스25", "지에스(GS)25", "GS25", "세븐일레븐", "이마트24", "미니스톱"],
@@ -96,24 +95,22 @@ def region_items(region_key: str, days: int, data: dict | None = None, cfg: dict
 
 def popup_items(cfg: dict | None = None, stores: list[dict] | None = None, today: date | None = None,
                 loader=None) -> pd.DataFrame:
-    """앱을 열 때 팝업으로 알릴 가게.
+    """앱을 열 때 팝업으로 알릴 가게: 저장된 내 매장에서 radius_m 안에 새로 생긴 곳.
 
-    - 내 매장이 저장돼 있으면: 그 가게 radius_m 안에 생긴 곳 (좌표가 없어 거리를 모르는 곳도 놓치지 않게 포함)
-    - 없으면: alerts.regions 지역 전체
+    - 좌표가 없어 거리를 모르는 곳도 놓치지 않게 포함합니다.
     - 축제·야시장 임시 매장은 뺍니다.
+    - 저장된 내 매장이 없으면 알릴 곳도 없습니다 (시 전체를 알리지 않음).
     """
     cfg = cfg if cfg is not None else scoring.load_config()
     s = settings(cfg)
     stores = mystore.load_my_stores() if stores is None else stores
     loader = loader or scoring.load_region_data
     known = scoring.load_regions()
-    regions = list(dict.fromkeys(st["region"] for st in stores if st.get("region") in known)) if stores \
-        else [r for r in s["regions"] if r in known]
+    regions = list(dict.fromkeys(st["region"] for st in stores if st.get("region") in known))
     parts = []
     for rk in regions:
         df = region_items(rk, s["days"], loader(rk), cfg, stores, today)
-        if stores:
-            df = df[df["near_dist"].isna() | (df["near_dist"] <= float(s["radius_m"]))]
+        df = df[df["near_dist"].isna() | (df["near_dist"] <= float(s["radius_m"]))]
         parts.append(df[~df["temporary"]])
     parts = [p for p in parts if not p.empty]
     if not parts:
@@ -121,6 +118,12 @@ def popup_items(cfg: dict | None = None, stores: list[dict] | None = None, today
     out = pd.concat(parts, ignore_index=True)
     # 내 매장에서 가까운 순(거리를 모르는 곳은 뒤), 같은 거리면 최근 개업 순
     return out.sort_values(["near_dist", "open_dt"], ascending=[True, False], na_position="last").reset_index(drop=True)
+
+
+def store_names(stores: list[dict]) -> str:
+    """'도그도그' 또는 '도그도그 · 2호점' — 화면에 어느 매장 기준인지 보여 줄 때 씁니다."""
+    names = list(dict.fromkeys(str(st.get("name") or "내 매장") for st in stores))
+    return " · ".join(names) if names else "내 매장"
 
 
 def group_label(row) -> str:

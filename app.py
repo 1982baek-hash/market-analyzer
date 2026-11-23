@@ -3,7 +3,7 @@ from src.analyzer import MarketAnalyzer
 from src.db_manager import DatabaseManager
 from src.collectors.pop_collector import PopulationAndBoundaryCollector
 from src.mart_sync import ensure_synced, status_summary
-from src.ui import alert_items, competitor_alert, require_login
+from src.ui import alert_link_label, competitor_alert, require_login
 
 st.set_page_config(
     page_title="우리 가족 상권 분석기 (성남·안동·예천)",
@@ -53,11 +53,8 @@ with c4:
         st.page_link("pages/4_내_매장.py", label="**내 매장**", icon="📍")
         st.caption("우리 가게 주변이 변했나?")
 
-# 새 경쟁점: 알림 팝업을 닫은 뒤에도 여기서 다시 볼 수 있다
-_new = alert_items()
-st.page_link("pages/6_새_경쟁점.py", icon="🆕",
-             label=f"**새 경쟁점** — 최근에 새로 영업 신고한 카페·간식점 {len(_new)}곳" if len(_new)
-             else "**새 경쟁점** — 최근에 새로 생긴 카페·간식점 보기")
+# 새 경쟁점: 알림 팝업을 닫은 뒤에도 여기서 다시 볼 수 있다 (내 매장 주변만)
+st.page_link("pages/6_새_경쟁점.py", icon="🆕", label=alert_link_label())
 
 run_info = status_summary()
 if not run_info["has_run"]:

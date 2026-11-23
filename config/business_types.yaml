@@ -55,5 +55,4 @@ lowcost_coffee_brands: [메가엠지씨, 메가커피, 컴포즈, 빽다방, 매
 alerts:
   enabled: true      # false로 바꾸면 팝업을 끕니다
   days: 30           # 최근 며칠 안에 영업 신고한 가게를 '새 경쟁점'으로 볼지
-  radius_m: 1000     # 저장된 내 매장이 있으면 이 거리(m) 안에 생긴 곳만 팝업으로 알림
-  regions: [andong]  # 저장된 내 매장이 없을 때 알릴 지역 (andong / seongnam / yecheon)
+  radius_m: 1000     # 저장된 내 매장에서 이 거리(m) 안에 생긴 곳만 경쟁점으로 보고 팝업으로 알림

@@ -55,6 +55,19 @@ def alert_items() -> pd.DataFrame:
     return _alert_items(scoring.mart_signature(), stores_key, date.today().isoformat())
 
 
+def alert_link_label() -> str:
+    """첫 화면의 '새 경쟁점' 바로가기 문구 (어느 매장 기준인지 함께 표시)."""
+    from src import alerts, mystore
+    stores = mystore.load_my_stores()
+    if not stores:
+        return "**새 경쟁점** — 내 매장 위치를 저장하면 주변에 새로 생긴 카페·간식점을 알려 드려요"
+    names, n = alerts.store_names(stores), len(alert_items())
+    cfg = alerts.settings()
+    if n:
+        return f"**새 경쟁점** — {names} 주변에 최근 {int(cfg['days'])}일 사이 새로 생긴 카페·간식점 {n}곳"
+    return f"**새 경쟁점** — {names} 주변에 최근 새로 생긴 카페·간식점 없음 (눌러서 자세히 보기)"
+
+
 def _alert_command(**cmd) -> None:
     """다음 화면 그리기 때 브라우저 저장소(확인한 알림 목록)에 반영할 명령을 걸어 둡니다."""
     import uuid
@@ -83,11 +96,12 @@ def _alert_body(items: pd.DataFrame) -> None:
 
     from src import alerts
     cfg = alerts.settings()
-    regions = scoring.load_regions()
     ids = list(items["mgmt_no"])
-    has_store = items["near_name"].notna().any()
-    where = (f"내 매장 반경 {int(cfg['radius_m']):,}m 안" if has_store
-             else " · ".join(regions[r]["name"].split()[-1] for r in items["region"].unique() if r in regions))
+    names = list(dict.fromkeys(n for n in items["near_name"] if isinstance(n, str)))
+    if not names:  # 좌표가 없어 가까운 매장을 못 붙인 가게만 있을 때
+        from src import mystore
+        names = [alerts.store_names(mystore.load_my_stores())]
+    where = f"{' · '.join(names)} 반경 {int(cfg['radius_m']):,}m 안"
     st.markdown(f"**{where}**에 최근 **{int(cfg['days'])}일** 사이 새로 영업 신고한 카페·간식점이 "
                 f"**{len(items)}곳** 있어요.")
     lines = []
@@ -108,8 +122,7 @@ def _alert_body(items: pd.DataFrame) -> None:
         _alert_close(True, ids)
         st.switch_page(ALERT_PAGE)
     st.caption("**확인했어요**를 누르면 이 가게들은 이 기기에서 다시 알리지 않아요. "
-               "그냥 닫으면 다음에 앱을 열 때 다시 알려 드려요."
-               + ("" if has_store else " 내 매장 위치를 저장해 두면 가게 주변에 생긴 곳만 알려 드려요."))
+               "그냥 닫으면 다음에 앱을 열 때 다시 알려 드려요.")
 
 
 def competitor_alert() -> None:
