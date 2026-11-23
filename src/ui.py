@@ -211,11 +211,32 @@ def category_scores(region_key: str, scls_cd: str, demand_type: str):
     return _category_scores(region_key, scls_cd, demand_type, scoring.mart_signature())
 
 
+def _home_store(region_key: str | None = None) -> dict | None:
+    """기본으로 볼 매장 = 저장된 내 매장 중 첫 번째 (지역을 주면 그 지역의 첫 번째)."""
+    from src import mystore
+    stores = mystore.load_my_stores(region_key)
+    return stores[0] if stores else None
+
+
+def home_dong(data: dict) -> tuple[str, str] | None:
+    """저장된 내 매장이 있는 동네 (행정동 코드, 이름). 그 지역에 매장이 없으면 None."""
+    from src import mystore
+    st_ = _home_store(data.get("region_key"))
+    if not st_:
+        return None
+    try:
+        return mystore.dong_of_point(data, st_["lat"], st_["lon"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def pick_region(key: str = "region") -> str:
     regions = scoring.load_regions()
     keys = list(regions)
-    # 화면을 옮겨 다녀도 같은 지역을 유지
-    current = st.session_state.get("sel_region", DEFAULT_REGION if DEFAULT_REGION in keys else keys[0])
+    # 기본 지역 = 내 매장이 있는 지역. 화면을 옮겨 다녀도 고른 지역을 유지
+    home = _home_store()
+    default = home["region"] if home and home.get("region") in keys else (DEFAULT_REGION if DEFAULT_REGION in keys else keys[0])
+    current = st.session_state.get("sel_region", default)
     sel = st.sidebar.selectbox("지역", keys, index=keys.index(current) if current in keys else 0,
                                format_func=lambda k: regions[k]["name"], key=key)
     st.session_state["sel_region"] = sel
@@ -228,13 +249,22 @@ def pick_dong(data: dict, key: str = "dong", main: bool = False) -> tuple[str, s
     if master["sigungu_nm"].nunique() > 1:  # 성남시는 구 이름도 함께
         labels = dict(zip(master["adong_cd"], master["sigungu_nm"].str.split().str[-1] + " " + master["adong_nm"]))
     codes = list(labels)
+    # 기본 동네 = 내 매장(형님 가게)이 있는 동네. 맨 앞에 두고 매장 이름을 붙여 찾기 쉽게 한다
+    home = home_dong(data)
+    home_cd = home[0] if home and home[0] in labels else None
+    if home_cd:
+        shop = str((_home_store(data.get("region_key")) or {}).get("name") or "내 매장")
+        labels[home_cd] = f"{labels[home_cd]} (📍 {shop})"
+        codes = [home_cd] + [c for c in codes if c != home_cd]
     current = st.session_state.get("sel_dong")
+    if current not in codes:
+        current = home_cd or codes[0]
     box = st if main else st.sidebar
     sel = box.selectbox("🔍 동네 검색 (이름을 입력하세요)" if main else "동네", codes,
-                        index=codes.index(current) if current in codes else 0,
+                        index=codes.index(current),
                         format_func=lambda c: labels[c], key=key)
     st.session_state["sel_dong"] = sel
-    return sel, labels[sel]
+    return sel, labels[sel].split(" (📍")[0]
 
 
 def period_badges(info_periods: dict) -> None:
