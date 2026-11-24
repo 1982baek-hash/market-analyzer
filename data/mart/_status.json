@@ -1,7 +1,7 @@
 {
   "_run": {
-    "failures": 1,
-    "finished_at": "2026-11-23T08:35:55+09:00"
+    "failures": 0,
+    "finished_at": "2026-11-24T13:06:21+09:00"
   },
   "busstops_andong": {
     "base_period": "202611",
@@ -97,21 +97,21 @@
     "synced_through": "2026-11-23T08:35:55+09:00"
   },
   "license_general_restaurants_yecheon": {
-    "base_period": "20261116",
+    "base_period": "20261124",
     "cycle": "매주 변경분 반영",
     "file": "licenses/general_restaurants_yecheon.parquet",
     "group_codes": [
       "5230000"
     ],
-    "last_checked": "2026-11-23T08:35:55+09:00",
-    "last_updated": "2026-11-16T07:46:50+09:00",
-    "message": "서버 오류 HTTP 504",
+    "last_checked": "2026-11-24T13:06:21+09:00",
+    "last_updated": "2026-11-24T13:06:21+09:00",
+    "message": "변경분 6건 반영 · 누적 2,400건 (영업 중 749건)",
     "method": "API 자동 (GitHub Actions)",
     "name": "인허가 일반음식점 (경상북도 예천군)",
     "region": "yecheon",
     "rows": 2400,
-    "status": "FAIL",
-    "synced_through": "2026-11-16T07:46:50+09:00"
+    "status": "SUCCESS",
+    "synced_through": "2026-11-24T13:06:21+09:00"
   },
   "license_rest_cafes_andong": {
     "base_period": "20261123",
